@@ -17,13 +17,13 @@ func NewPost(
 	title,
 	description string,
 	price float64,
-	imageURL, owner string,
+	imageURL, ownerLogin string,
 ) *Post {
 	return &Post{
 		Title:       title,
 		Description: description,
 		Price:       price,
 		ImageURL:    imageURL,
-		Owner:       owner,
+		Owner:       ownerLogin,
 	}
 }
