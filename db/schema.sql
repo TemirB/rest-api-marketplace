@@ -1,6 +1,6 @@
 CREATE TABLE users (
     login VARCHAR(50) PRIMARY KEY,
-    password TEXT NOT NULL  -- bcrypt
+    password VARCHAR(60)  NOT NULL  -- bcrypt
 );
 
 CREATE TABLE posts (

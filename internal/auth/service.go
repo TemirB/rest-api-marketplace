@@ -32,16 +32,16 @@ func NewService(
 }
 
 func (s *Service) Register(login, password string) error {
-	if validateLogin(login) {
+	if !validLogin(login) {
 		return InvalidLogin
 	}
 
-	if validatePassword(password) {
+	if !validPassword(password) {
 		return InvalidPassword
 	}
 
-	if s.validateUser(login) {
-		return UserAlreadyExists
+	if yes, err := s.userExist(login); !yes || err != nil {
+		return err
 	}
 
 	EncryptedPassword, err := hash.EncryptPassword(password)

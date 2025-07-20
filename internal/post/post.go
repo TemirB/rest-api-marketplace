@@ -3,15 +3,15 @@ package post
 import "time"
 
 type Post struct {
-	ID          uint    `gorm:"primaryKey"`
-	Title       string  `gorm:"size:200"`
-	Description string  `gorm:"type:text"`
-	Price       float64 `gorm:"type:numeric(10,2)"` // float можно заменить на decimal для большей точности, но для простоты оставим float
-	ImageURL    string  `gorm:"size:500"`
+	ID          uint
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	Price       float64 `json:"price"` // float можно заменить на decimal для большей точности, но для простоты оставим float
+	ImageURL    string  `json:"image_url"`
 
-	CreatedAt time.Time `gorm:"index"`
-	Owner     string    // References User.Login
-	isOwner   bool      // Indicates if the post is owned by the current user
+	CreatedAt time.Time `json:"created_at"`
+	Owner     string    `json:"owner"`
+	IsOwner   bool      `json:"is_owner"`
 }
 
 func NewPost(
