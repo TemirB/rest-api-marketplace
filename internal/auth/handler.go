@@ -3,10 +3,20 @@ package auth
 import (
 	"encoding/json"
 	"net/http"
+
+	"go.uber.org/zap"
 )
 
 type Handler struct {
 	Service *Service
+	Logger  *zap.Logger
+}
+
+func NewHandler(service *Service, logger *zap.Logger) *Handler {
+	return &Handler{
+		Service: service,
+		Logger:  logger,
+	}
 }
 
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {

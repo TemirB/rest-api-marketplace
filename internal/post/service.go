@@ -1,10 +1,10 @@
 package post
 
 type Service struct {
-	repository storage
+	repository *storage
 }
 
-func NewService(repository storage) *Service {
+func NewService(repository *storage) *Service {
 	return &Service{
 		repository: repository,
 	}
@@ -19,11 +19,6 @@ func (s *Service) CreatePost(post *Post) (*Post, error) {
 	return post, nil
 }
 
-func (s *Service) GetPosts(sort SortParams, filter FilterParams) ([]*Post, error) {
-	posts, err := s.repository.GetAll(sort, filter)
-	if err != nil {
-		return nil, err
-	}
-
-	return posts, nil
+func (s *Service) GetPosts(sort *SortParams, filter *FilterParams) ([]*Post, error) {
+	return s.repository.GetAll(sort, filter)
 }

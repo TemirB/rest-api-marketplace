@@ -3,11 +3,23 @@ package post
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
+
+	"go.uber.org/zap"
 )
 
 type Handler struct {
 	Service *Service
+	Logger  *zap.Logger
+}
+
+func NewHandler(service *Service, logger *zap.Logger) *Handler {
+	return &Handler{
+		Service: service,
+		Logger:  logger,
+	}
 }
 
 func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
@@ -56,47 +68,68 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(newPost)
 }
 
+func setFilter(q url.Values, owner string) *FilterParams {
+	minPrice, errMinPrice := strconv.ParseFloat(q.Get("min_price"), 64)
+	maxPrice, errMaxPrice := strconv.ParseFloat(q.Get("max_price"), 64)
+	switch {
+	case minPrice > maxPrice || maxPrice < 0 || minPrice < 0:
+		minPrice = 0
+		maxPrice = -1
+	case errMinPrice == nil && errMaxPrice == nil:
+	case errMinPrice != nil:
+		minPrice = 0
+	case errMaxPrice != nil:
+		maxPrice = -1
+	default:
+		minPrice = 0
+		maxPrice = -1
+	}
+	return &FilterParams{
+		MinPrice: minPrice,
+		MaxPrice: maxPrice,
+		Owner:    owner,
+	}
+}
+
+func setSort(q url.Values) *SortParams {
+	sortBy := q.Get("sort_by")
+	if strings.ToLower(sortBy) != "created_at" {
+		sortBy = "price"
+	} else {
+		sortBy = "created_at"
+	}
+	order := q.Get("order")
+	if strings.ToLower(order) != "desc" {
+		order = "ASC"
+	} else {
+		order = "DESC"
+	}
+	return &SortParams{
+		Field:     sortBy,
+		Direction: order,
+	}
+}
+
 func (h *Handler) GetPosts(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Тут нужен нормальный парсинг в случае отсутствия параметров
 	q := r.URL.Query()
-	minPrice, errMinPrice := strconv.ParseFloat(q.Get("min_price"), 64)
-	maxPrice, errMaxPrice := strconv.ParseFloat(q.Get("max_price"), 64)
-	switch {
-	case errMinPrice == nil && errMaxPrice == nil:
-	case errMinPrice != nil:
-		minPrice = 0
-	case errMaxPrice != nil:
-		maxPrice = 100000 // сюда макс цену
-	default:
-		minPrice = 0
-		maxPrice = 100000 // сюда макс цену
-	}
-
-	sortBy := q.Get("sort_by")
-	if sortBy == "" {
-		sortBy = "date"
-	}
-	order := q.Get("order")
-	if order == "" {
-		order = "desc"
-	}
-
 	var currentUser string
 	if userVal := r.Context().Value("userLogin"); userVal != nil {
 		if login, ok := userVal.(string); ok {
 			currentUser = login
 		}
 	}
+	filter := setFilter(q, currentUser)
+	if filter == nil {
+		return
+	}
+	sort := setSort(q)
 
-	posts, err := h.Service.GetPosts(
-		SortParams{Field: sortBy, Direction: order},
-		FilterParams{MinPrice: minPrice, MaxPrice: maxPrice, Owner: currentUser},
-	)
+	posts, err := h.Service.GetPosts(sort, filter)
 	if err != nil {
 		http.Error(w, "Internal Server Error: "+err.Error(), http.StatusInternalServerError)
 		return

@@ -17,12 +17,12 @@ var (
 )
 
 type Service struct {
-	storage storage
+	storage *storage
 	manager *jwt.Manager
 }
 
 func NewService(
-	storage storage,
+	storage *storage,
 	tokenGenerator *jwt.Manager,
 ) *Service {
 	return &Service{
