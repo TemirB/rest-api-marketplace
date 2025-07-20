@@ -1,4 +1,4 @@
-package db
+package database
 
 import (
 	"database/sql"
@@ -7,7 +7,7 @@ import (
 	_ "github.com/lib/pq"
 	"go.uber.org/zap"
 
-	"github.com/TemirB/rest-api-marketplace/internal/pkg/config"
+	"github.com/TemirB/rest-api-marketplace/config"
 )
 
 type Repository struct {

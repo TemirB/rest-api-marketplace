@@ -27,3 +27,11 @@ func NewPost(
 		Owner:       ownerLogin,
 	}
 }
+
+type SortParams struct {
+	SortBy   string  `json:"sort_by"`
+	Order    string  `json:"order"`
+	MinPrice float64 `json:"min_price"`
+	MaxPrice float64 `json:"max_price"`
+	Login    string  `json:"login"`
+}

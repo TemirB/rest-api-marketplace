@@ -6,8 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/TemirB/rest-api-marketplace/internal/pkg/models/post"
-	postStorage "github.com/TemirB/rest-api-marketplace/internal/storage/post"
+	postStorage "github.com/TemirB/rest-api-marketplace/internal/database/publication"
 )
 
 type Handler struct {
@@ -33,7 +32,7 @@ func (h *Handler) CreatePost(c *gin.Context) {
 		return
 	}
 
-	post, err := h.Service.CreatePost(&post.Post{
+	post, err := h.Service.CreatePost(&Post{
 		Title:       request.Title,
 		Description: request.Description,
 		Price:       request.Price,
