@@ -1,70 +1,64 @@
 package auth
 
 import (
+	"encoding/json"
 	"net/http"
-
-	"go.uber.org/zap"
-
-	"github.com/gin-gonic/gin"
 )
 
 type Handler struct {
 	Service *Service
-	logger  *zap.Logger
 }
 
-func NewHandler(Service *Service, logger *zap.Logger) *Handler {
-	return &Handler{
-		Service: Service,
-		logger:  logger,
-	}
-}
-
-var registrationRequest struct {
-	Login    string `json:"login" binding:"required,min=3,max=50"`
-	Password string `json:"password" binding:"required,min=8"`
-}
-
-var LoginRequest struct {
-	Login    string `json:"login" binding:"required"`
-	Password string `json:"password" binding:"required"`
-}
-
-func (h *Handler) Register(c *gin.Context) {
-	if err := c.ShouldBindJSON(&registrationRequest); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	if err := h.Service.Register(registrationRequest.Login, registrationRequest.Password); err != nil {
-		c.JSON(
-			http.StatusBadRequest,
-			gin.H{"error": err.Error()},
-		)
+	var req struct {
+		Login    string `json:"login"`
+		Password string `json:"password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Bad Request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
-		"login":    registrationRequest.Login,
-		"password": registrationRequest.Password,
-		// По условию нужно вернуть данные созданного пользователя,
-		// но мне кажется, что возвращать пароль не ОК
+	if err := h.Service.Register(req.Login, req.Password); err != nil {
+		http.Error(w, "Bad Request: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]string{
+		"login": req.Login,
 	})
 }
 
-func (h *Handler) Login(c *gin.Context) {
-	if err := c.ShouldBindJSON(&LoginRequest); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Login    string `json:"login"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Bad Request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	token, err := h.Service.Login(LoginRequest.Login, LoginRequest.Password)
+	token, err := h.Service.Login(req.Login, req.Password)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		http.Error(w, "Unauthorized: "+err.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
 		"token": token,
 	})
 }

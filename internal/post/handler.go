@@ -1,81 +1,107 @@
 package post
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
-
-	"github.com/gin-gonic/gin"
-
-	postStorage "github.com/TemirB/rest-api-marketplace/internal/database/publication"
 )
 
 type Handler struct {
 	Service *Service
 }
 
-func NewPostHandler(Service *Service) *Handler {
-	return &Handler{Service: Service}
-}
-
-func (h *Handler) CreatePost(c *gin.Context) {
-	owner := c.MustGet("userLogin").(string)
-
-	var request struct {
-		Title       string  `json:"title" binding:"required,max=200"`
-		Description string  `json:"description" binding:"required,max=1000"`
-		Price       float64 `json:"price" binding:"required,gt=0"`
-		ImageURL    string  `json:"image_url" binding:"required,url"`
-	}
-
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	post, err := h.Service.CreatePost(&Post{
-		Title:       request.Title,
-		Description: request.Description,
-		Price:       request.Price,
-		ImageURL:    request.ImageURL,
-		Owner:       owner,
+	loginVal := r.Context().Value("userLogin")
+	if loginVal == nil {
+		http.Error(w, "Unauthorized: no user", http.StatusUnauthorized)
+		return
+	}
+	ownerLogin, ok := loginVal.(string)
+	if !ok {
+		http.Error(w, "Internal Server Error: invalid user context", http.StatusInternalServerError)
+		return
+	}
+
+	var req struct {
+		Title       string  `json:"title"`
+		Description string  `json:"description"`
+		Price       float64 `json:"price"`
+		ImageURL    string  `json:"image_url"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Bad Request: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	newPost, err := h.Service.CreatePost(&Post{
+		Title:       req.Title,
+		Description: req.Description,
+		Price:       req.Price,
+		ImageURL:    req.ImageURL,
+		Owner:       ownerLogin,
 	})
-
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		http.Error(w, "Bad Request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	c.JSON(http.StatusCreated, post)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(newPost)
 }
 
-func (h *Handler) GetPosts(c *gin.Context, login string) {
-	minPrice, _ := strconv.ParseFloat(c.Query("min_price"), 64)
-	maxPrice, _ := strconv.ParseFloat(c.Query("max_price"), 64)
+func (h *Handler) GetPosts(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
 
-	sortBy := c.DefaultQuery("sort_by", "date")
-	order := c.DefaultQuery("order", "desc")
+	// Тут нужен нормальный парсинг в случае отсутствия параметров
+	q := r.URL.Query()
+	minPrice, errMinPrice := strconv.ParseFloat(q.Get("min_price"), 64)
+	maxPrice, errMaxPrice := strconv.ParseFloat(q.Get("max_price"), 64)
+	switch {
+	case errMinPrice == nil && errMaxPrice == nil:
+	case errMinPrice != nil:
+		minPrice = 0
+	case errMaxPrice != nil:
+		maxPrice = 100000 // сюда макс цену
+	default:
+		minPrice = 0
+		maxPrice = 100000 // сюда макс цену
+	}
 
-	currentUser := ""
-	if user, exists := c.Get("userLogin"); exists {
-		currentUser = user.(string)
+	sortBy := q.Get("sort_by")
+	if sortBy == "" {
+		sortBy = "date"
+	}
+	order := q.Get("order")
+	if order == "" {
+		order = "desc"
+	}
+
+	var currentUser string
+	if userVal := r.Context().Value("userLogin"); userVal != nil {
+		if login, ok := userVal.(string); ok {
+			currentUser = login
+		}
 	}
 
 	posts, err := h.Service.GetPosts(
-		postStorage.SortParams{
-			Field:     sortBy,
-			Direction: order,
-		},
-		postStorage.FilterParams{
-			MinPrice: minPrice,
-			MaxPrice: maxPrice,
-			Owner:    currentUser,
-		},
+		SortParams{Field: sortBy, Direction: order},
+		FilterParams{MinPrice: minPrice, MaxPrice: maxPrice, Owner: currentUser},
 	)
-
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		http.Error(w, "Internal Server Error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	c.JSON(http.StatusOK, posts)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(posts)
 }

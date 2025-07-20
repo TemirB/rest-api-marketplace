@@ -29,9 +29,12 @@ func NewPost(
 }
 
 type SortParams struct {
-	SortBy   string  `json:"sort_by"`
-	Order    string  `json:"order"`
-	MinPrice float64 `json:"min_price"`
-	MaxPrice float64 `json:"max_price"`
-	Login    string  `json:"login"`
+	Field     string // "price" | "created_at"
+	Direction string // "asc" | "desc"
+}
+
+type FilterParams struct {
+	MinPrice float64
+	MaxPrice float64
+	Owner    string
 }

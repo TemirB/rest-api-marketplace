@@ -3,7 +3,6 @@ package auth
 import (
 	"errors"
 
-	user "github.com/TemirB/rest-api-marketplace/internal/auth/user"
 	"github.com/TemirB/rest-api-marketplace/pkg/hash"
 	"github.com/TemirB/rest-api-marketplace/pkg/jwt"
 )
@@ -17,25 +16,18 @@ var (
 	InvalidCredentials = errors.New("invalid credentials")
 )
 
-type storage interface {
-	Create(user *user.User) error
-	GetByLogin(login string) (*user.User, error)
-	Exists(login string) (bool, error)
-	Delete(login string) error
-}
-
 type Service struct {
-	storage   storage
-	generator *jwt.Generator
+	storage storage
+	manager *jwt.Manager
 }
 
 func NewService(
 	storage storage,
-	tokenGenerator *jwt.Generator,
+	tokenGenerator *jwt.Manager,
 ) *Service {
 	return &Service{
-		storage:   storage,
-		generator: tokenGenerator,
+		storage: storage,
+		manager: tokenGenerator,
 	}
 }
 
@@ -57,7 +49,7 @@ func (s *Service) Register(login, password string) error {
 		return FailedToEncryptPassword
 	}
 
-	user := user.User{
+	user := User{
 		Login:    login,
 		Password: string(EncryptedPassword),
 	}
@@ -75,9 +67,9 @@ func (s *Service) Login(login, password string) (string, error) {
 		return "", InvalidCredentials
 	}
 
-	return s.generator.Generate(login)
+	return s.manager.GenerateToken(login)
 }
 
 func (s *Service) ValidateToken(tokenString string) (string, error) {
-	return s.generator.Validate(tokenString)
+	return s.manager.ValidateToken(tokenString)
 }
