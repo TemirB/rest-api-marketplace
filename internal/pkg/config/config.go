@@ -17,7 +17,12 @@ type Config struct {
 	DBPassword string
 	DBName     string
 
-	JWTSecret string
+	JWT JWTConfig
+}
+
+type JWTConfig struct {
+	Secret     string
+	Expiration int
 }
 
 func Load() (*Config, error) {
@@ -36,6 +41,11 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	jwtExpiration, err := strconv.Atoi(os.Getenv("JWT_EXPIRATION"))
+	if err != nil {
+		return nil, err
+	}
+
 	return &Config{
 		AppName:    os.Getenv("APP_NAME"),
 		AppPort:    appPort,
@@ -44,6 +54,9 @@ func Load() (*Config, error) {
 		DBUser:     os.Getenv("DB_USER"),
 		DBPassword: os.Getenv("DB_PASSWORD"),
 		DBName:     os.Getenv("DB_NAME"),
-		JWTSecret:  os.Getenv("JWT_SECRET"),
+		JWT: JWTConfig{
+			Secret:     os.Getenv("JWT_SECRET"),
+			Expiration: jwtExpiration,
+		},
 	}, nil
 }
