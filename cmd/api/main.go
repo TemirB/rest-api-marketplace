@@ -68,7 +68,7 @@ func main() {
 	http.Handle("/posts", jwtMiddleware(http.HandlerFunc(postHandler.CreatePost)))
 	http.HandleFunc("/posts/feed", postHandler.GetPosts)
 
-	ServerAddress := "localhost:" + strconv.Itoa(cfg.AppPort)
+	ServerAddress := ":" + strconv.Itoa(cfg.AppPort)
 	log.Printf("Server started at %s\n", ServerAddress)
 	http.ListenAndServe(ServerAddress, nil)
 }
