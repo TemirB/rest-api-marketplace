@@ -8,8 +8,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/TemirB/rest-api-marketplace/config"
 	auth "github.com/TemirB/rest-api-marketplace/internal/auth"
+	"github.com/TemirB/rest-api-marketplace/internal/config"
 	"github.com/TemirB/rest-api-marketplace/internal/database"
 	"github.com/TemirB/rest-api-marketplace/internal/middleware"
 	post "github.com/TemirB/rest-api-marketplace/internal/post"

@@ -7,7 +7,7 @@ import (
 	_ "github.com/lib/pq"
 	"go.uber.org/zap"
 
-	"github.com/TemirB/rest-api-marketplace/config"
+	"github.com/TemirB/rest-api-marketplace/internal/config"
 )
 
 type Repository struct {
