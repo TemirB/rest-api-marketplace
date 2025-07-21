@@ -4,6 +4,7 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"go.uber.org/zap"
@@ -51,14 +52,21 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.Service.Register(req.Login, req.Password); err != nil {
-		h.logger.Error(
-			"Error while registering user",
-			zap.String("login", req.Login),
-			zap.Error(err),
-		)
-		http.Error(w, "Bad Request: "+err.Error(), http.StatusBadRequest)
-		return
+	err := h.Service.Register(req.Login, req.Password)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrUserExists):
+			http.Error(w, "User already exists", http.StatusConflict)
+			return
+		case errors.Is(err, ErrInvalidLogin),
+			errors.Is(err, ErrInvalidPassword):
+			http.Error(w, "Bad Request: "+err.Error(), http.StatusBadRequest)
+			return
+		default:
+			h.logger.Error("Register failed", zap.Error(err))
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	h.logger.Info(

@@ -104,31 +104,21 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 }
 
 func setFilter(q url.Values, owner string) *FilterParams {
-	minPrice, errMinPrice := strconv.ParseFloat(q.Get("min_price"), 64)
-	maxPrice, errMaxPrice := strconv.ParseFloat(q.Get("max_price"), 64)
+	var (
+		minPrice float64
+		maxPrice float64
+		err      error
+	)
 
-	switch {
-	case (errMinPrice != nil || minPrice < 0) && (errMaxPrice != nil || maxPrice < 0):
-		// оба некорректны
+	if minPrice, err = strconv.ParseFloat(q.Get("min_price"), 64); err != nil || minPrice < 0 {
 		minPrice = 0
+	}
+	if maxPrice, err = strconv.ParseFloat(q.Get("max_price"), 64); err != nil || maxPrice < 0 {
 		maxPrice = -1
+	}
 
-	case errMaxPrice != nil || maxPrice < 0:
-		// только max неверен
-		maxPrice = -1
-
-	case errMinPrice != nil || minPrice < 0:
-		// только min неверен
-		minPrice = 0
-
-	case minPrice > maxPrice:
-		// обе цены валидны, но нижняя > верхней
-		minPrice += maxPrice
-		maxPrice = minPrice - maxPrice
-		minPrice = minPrice - maxPrice
-
-	default:
-		// всё корректно — ничего не меняем
+	if maxPrice >= 0 && minPrice > maxPrice {
+		minPrice, maxPrice = maxPrice, minPrice
 	}
 
 	return &FilterParams{

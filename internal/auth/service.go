@@ -4,18 +4,21 @@ package auth
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/TemirB/rest-api-marketplace/pkg/hash"
 	"go.uber.org/zap"
 )
 
 var (
-	InvalidLogin            = errors.New("login must be 3-50 characters")
-	InvalidPassword         = errors.New("password must be at least 8 characters")
-	UserAlreadyExists       = errors.New("user already exists")
-	FailedToEncryptPassword = errors.New("failed to encrypt password")
+	ErrInvalidLogin            = errors.New("login must be 3-50 characters")
+	ErrInvalidPassword         = errors.New("password must be at least 8 characters")
+	ErrFailedToEncryptPassword = errors.New("failed to encrypt password")
 
-	InvalidCredentials = errors.New("invalid credentials")
+	ErrInvalidCredentials = errors.New("invalid credentials")
+	ErrWrongPassword      = errors.New("wrong password")
+
+	ErrUserExists = errors.New("user already exists")
 )
 
 type storage interface {
@@ -52,7 +55,7 @@ func (s *Service) Register(login, password string) error {
 			"invalid login",
 			zap.String("login", login),
 		)
-		return InvalidLogin
+		return ErrInvalidLogin
 	}
 
 	if !validPassword(password) {
@@ -60,16 +63,15 @@ func (s *Service) Register(login, password string) error {
 			"invalid password",
 			// zap.String("password", password), is it legit???
 		)
-		return InvalidPassword
+		return ErrInvalidPassword
 	}
 
-	if no, err := s.userExist(login); no || err != nil {
-		s.logger.Info(
-			"user already exists or db error",
-			zap.String("login", login),
-			zap.Error(err),
-		)
-		return err
+	exists, err := s.userExists(login)
+	if err != nil {
+		return fmt.Errorf("unable to check user existence: %w", err)
+	}
+	if exists {
+		return ErrUserExists
 	}
 
 	EncryptedPassword, err := hash.EncryptPassword(password)
@@ -79,7 +81,7 @@ func (s *Service) Register(login, password string) error {
 			zap.String("login", login),
 			zap.Error(err),
 		)
-		return FailedToEncryptPassword
+		return ErrFailedToEncryptPassword
 	}
 
 	user := User{
@@ -96,7 +98,7 @@ func (s *Service) Login(login, password string) (string, error) {
 			"invalid login",
 			zap.String("login", login),
 		)
-		return "", InvalidLogin
+		return "", ErrInvalidLogin
 	}
 	user, err := s.storage.GetByLogin(login)
 	if err != nil {
@@ -105,7 +107,7 @@ func (s *Service) Login(login, password string) (string, error) {
 			zap.String("login", login),
 			zap.Error(err),
 		)
-		return "", InvalidCredentials
+		return "", ErrInvalidCredentials
 	}
 
 	if !hash.ComparePasswords(user.Password, password) {
@@ -114,7 +116,7 @@ func (s *Service) Login(login, password string) (string, error) {
 			zap.String("login", login),
 			// zap.String("password", password), is it legit???
 		)
-		return "", InvalidCredentials
+		return "", ErrWrongPassword
 	}
 
 	return s.manager.GenerateToken(login)
