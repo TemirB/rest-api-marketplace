@@ -185,3 +185,36 @@ run_test "Invalid JSON on register" \
   headers_json 400
 
 echo "== All tests passed! =="
+
+# 10 fixes
+
+# ФИД без авторизации
+echo "Public feed:"
+curl -s "$BASE_URL/posts/feed" | jq .
+
+# ФИД с авторизацией
+echo "Alice's feed:"
+curl -s -H "Authorization: Bearer $TOKEN_ALICE" "$BASE_URL/posts/feed" | jq .
+
+# GET поста без токена
+echo "Get post #$ID1 public:"
+curl -s "$BASE_URL/posts/$ID1" | jq .
+
+# GET поста с токеном Alice
+echo "Get post #$ID1 as Alice:"
+curl -s -H "Authorization: Bearer $TOKEN_ALICE" "$BASE_URL/posts/$ID1" | jq .
+
+# Некорректный DELETE поста чужим пользователем (Bob)
+echo "Delete #$ID2 as Bob (should fail):"
+curl -s -X DELETE -H "Authorization: Bearer $TOKEN_BOB" \
+     "$BASE_URL/posts/$ID2" -w "\nStatus: %{http_code}\n"
+
+# Успешный DELETE поста Alice
+echo "Delete #$ID2 as Alice:"
+curl -s -X DELETE -H "Authorization: Bearer $TOKEN_ALICE" \
+     "$BASE_URL/posts/$ID2" -w "\nStatus: %{http_code}\n"
+
+# Проверка, что пост удалён
+echo "Get deleted #$ID2 (should 404):"
+curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/posts/$ID2"
+echo
