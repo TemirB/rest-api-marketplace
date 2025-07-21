@@ -1,12 +1,21 @@
 # REST API Marketplace
 
+Это простая релизация REST API маркетплейса на Go. В качестве базы данных используется PostgreSQL.
+
+В репозитории есть тесты
+1. Юниты, ими покрыты пакеты auth и post
+2. Интеграционные, см. файл integrations
+3. Примитивный bash-скрипт, для теста test.sh
+
+Последний можно использовать для быстрого теста всех эндпойнтов. (Но не всех случаев!)
+
+
 ## Оглавление
 
 1. [Запуск проекта](#запуск-проекта)
-2. [Переменные окружения](#переменные-окружения)
-3. [API эндпойнты (кратко)](#api-эндпойнты-кратко)
-4. [API эндпойнты (подробно, OpenAPI-like)](#api-эндпойнты-подробно-openapi-like)
-5. [Аутентификация](#аутентификация)
+2. [API эндпойнты (кратко)](#api-эндпойнты-кратко)
+3. [API эндпойнты (подробно)](#api-эндпойнты-подробно)
+4. [Аутентификация](#аутентификация)
 
 ---
 
@@ -18,6 +27,7 @@
 git clone https://github.com/TemirB/rest-api-marketplace.git
 cd rest-api-marketplace
 ```
+---
 
 ### 2. Настройка переменных окружения
 
@@ -25,51 +35,15 @@ cd rest-api-marketplace
 
 ```bash
 cp example.env .env
-# затем откройте .env и задайте свои значения
 ```
+---
 
-### 3. Запуск через Docker Compose
-
-Убедитесь, что Docker и Docker Compose установлены, затем выполните:
-
-```bash
-docker-compose up --build
-```
+### 3. Запуск 
 
 Сервисы запустятся на портах:
 
 * **Приложение**: `localhost:8080` (APP\_PORT из .env)
 * **PostgreSQL**: `postgres:5432` внутри Docker-сети
-
-### 4. Остановка
-
-```bash
-docker-compose down
-```
-
----
-
-## Переменные окружения
-
-Файл `example.env` содержит:
-
-```dotenv
-APP_NAME=rest-api-marketplace
-APP_PORT=8080
-
-DB_HOST=postgres
-DB_PORT=5432
-DB_USER=postgres
-DB_PASSWORD=postgres
-DB_NAME=marketplace
-
-JWT_SECRET=my_jwt_secret
-JWT_EXPIRATION=60
-```
-
-Отредактируйте под свои нужды.
-
----
 
 ## API эндпойнты (кратко)
 
@@ -85,7 +59,7 @@ JWT_EXPIRATION=60
 
 ---
 
-## API эндпойнты (подробно, OpenAPI-like)
+## API эндпойнты (подробно)
 
 ### 1. POST `/register`
 
@@ -222,6 +196,8 @@ Responses:
   "is_owner": true|false
 }
 ```
+
+Поле is_owner = true, заполнятеся только при запросе всех постов (и автор сопадает с логином запрашивающего пользователя), и при запросе по айди
 
 ---
 
