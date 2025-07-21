@@ -13,7 +13,9 @@ import (
 
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
+	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
 	"go.uber.org/zap"
 
 	"github.com/TemirB/rest-api-marketplace/internal/auth"
@@ -27,19 +29,21 @@ var testServer *httptest.Server
 var db *sql.DB
 
 func TestMain(m *testing.M) {
-	// 1. Запуск контейнера Postgres
 	ctx := context.Background()
-	pgContainer, err := postgres.Run(ctx, "postgres:13-alpine",
+	pg, err := postgres.Run(ctx, "postgres:15-alpine",
 		postgres.WithDatabase("testdb"),
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
+		testcontainers.WithExposedPorts("5432"),
+		testcontainers.WithWaitStrategy(wait.ForListeningPort("5432/tcp")),
 		postgres.WithInitScripts("../migrations/init.sql"),
 	)
 	if err != nil {
-		panic(err)
+		panic("failed to start postgres container: " + err.Error())
 	}
+	defer pg.Terminate(ctx)
 
-	uri, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
+	uri, err := pg.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
 		panic(err)
 	}
@@ -69,7 +73,6 @@ func TestMain(m *testing.M) {
 	testServer = httptest.NewServer(mux)
 	code := m.Run()
 	testServer.Close()
-	pgContainer.Terminate(ctx)
 	os.Exit(code)
 }
 
@@ -113,6 +116,7 @@ func TestFullScenario(t *testing.T) {
 	postResp, err := client.Do(postReq)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusCreated, postResp.StatusCode)
+
 	var postRespBody post.Post
 	json.NewDecoder(postResp.Body).Decode(&postRespBody)
 	assert.Equal(t, "First post", postRespBody.Title)
