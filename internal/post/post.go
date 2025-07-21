@@ -11,7 +11,14 @@ type Post struct {
 
 	CreatedAt time.Time `json:"created_at"`
 	Owner     string    `json:"owner"`
-	IsOwner   bool      `json:"is_owner"`
+	IsOwner   bool      `json:"is_owner,omitempty"`
+}
+
+type UpdatePostRequest struct {
+	Title       *string  `json:"title,omitempty"`
+	Description *string  `json:"description,omitempty"`
+	Price       *float64 `json:"price,omitempty"`
+	ImageURL    *string  `json:"image_url,omitempty"`
 }
 
 func NewPost(

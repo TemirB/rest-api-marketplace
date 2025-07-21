@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/TemirB/rest-api-marketplace/pkg/jwt"
 	"go.uber.org/zap"
 )
 
@@ -44,22 +45,13 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	loginVal := r.Context().Value("userLogin")
-	if loginVal == nil {
-		h.logger.Info(
-			"Unauthorized: no author",
-			zap.String("author", "loginVal==nil"),
-		)
-		http.Error(w, "Unauthorized: no user", http.StatusUnauthorized)
-		return
-	}
-	ownerLogin, ok := loginVal.(string)
-	if !ok {
+	loginVal, err := jwt.GetLogin(r)
+	if err != nil {
 		h.logger.Info(
 			"Internal Server Error: invalid user context",
-			zap.String("author", "loginVal.(string) == false"),
+			zap.String("author", "jwt.GetLogin(r) == nil"),
 		)
-		http.Error(w, "Internal Server Error: invalid user context", http.StatusInternalServerError)
+		http.Error(w, "Internal Server Error: invalid user context", http.StatusUnauthorized)
 		return
 	}
 
@@ -73,7 +65,7 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.logger.Error(
 			"Error while decoding request body",
-			zap.String("author", ownerLogin),
+			zap.String("author", loginVal),
 			zap.Any("body", r.Body),
 			zap.Error(err),
 		)
@@ -86,12 +78,12 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 		Description: req.Description,
 		Price:       req.Price,
 		ImageURL:    req.ImageURL,
-		Owner:       ownerLogin,
+		Owner:       loginVal,
 	})
 	if err != nil {
 		h.logger.Error(
 			"Failed to create post",
-			zap.String("author", ownerLogin),
+			zap.String("author", loginVal),
 			zap.Any("post", newPost),
 			zap.Error(err),
 		)
@@ -163,12 +155,7 @@ func (h *Handler) GetPosts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	q := r.URL.Query()
-	var currentUser string
-	if userVal := r.Context().Value("userLogin"); userVal != nil {
-		if login, ok := userVal.(string); ok {
-			currentUser = login
-		}
-	}
+	currentUser, _ := jwt.GetLogin(r)
 	filter := setFilter(q, currentUser)
 	sort := setSort(q)
 
@@ -214,13 +201,8 @@ func (h *Handler) UpdatePost(w http.ResponseWriter, r *http.Request) {
 	}
 	id := uint(id64)
 
-	var req struct {
-		Title       string  `json:"title"`
-		Description string  `json:"description"`
-		Price       float64 `json:"price"`
-		ImageURL    string  `json:"image_url"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	var updatePostRequest *UpdatePostRequest
+	if err := json.NewDecoder(r.Body).Decode(updatePostRequest); err != nil {
 		http.Error(w, "Bad Request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -235,17 +217,26 @@ func (h *Handler) UpdatePost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusBadRequest)
 		return
 	}
-	if post.Owner != r.Context().Value("userLogin") {
-		http.Error(w, "Unauthorized: not owner", http.StatusUnauthorized)
+	login, err := jwt.GetLogin(r)
+	if err != nil {
+		h.logger.Info(
+			"Internal Server Error: invalid user context",
+			zap.String("author", "jwt.GetLogin(r) == nil"),
+		)
+		http.Error(w, "Internal Server Error: invalid user context", http.StatusUnauthorized)
+		return
+	}
+	if post.Owner != login {
+		http.Error(w, "Unauthorized: not owner", http.StatusForbidden)
 		return
 	}
 
-	post = &Post{
-		ID:          id,
-		Title:       req.Title,
-		Description: req.Description,
-		Price:       req.Price,
-		ImageURL:    req.ImageURL,
+	mergePostUpdates(post, updatePostRequest)
+
+	err = validatePost(post)
+	if err != nil {
+		http.Error(w, "Bad Request: "+err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	if err := h.service.UpdatePost(post); err != nil {
@@ -255,6 +246,21 @@ func (h *Handler) UpdatePost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func mergePostUpdates(post *Post, updatePostRequest *UpdatePostRequest) {
+	if updatePostRequest.Title != nil {
+		post.Title = *updatePostRequest.Title
+	}
+	if updatePostRequest.Description != nil {
+		post.Description = *updatePostRequest.Description
+	}
+	if updatePostRequest.Price != nil {
+		post.Price = *updatePostRequest.Price
+	}
+	if updatePostRequest.ImageURL != nil {
+		post.ImageURL = *updatePostRequest.ImageURL
+	}
 }
 
 func (h *Handler) DeletePost(w http.ResponseWriter, r *http.Request) {
@@ -332,7 +338,16 @@ func (h *Handler) GetPostByID(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	post.IsOwner = true
+	login, err := jwt.GetLogin(r)
+	if err != nil {
+		h.logger.Info(
+			"Internal Server Error: invalid user context",
+			zap.String("author", "jwt.GetLogin(r) == nil"),
+		)
+		http.Error(w, "Internal Server Error: invalid user context", http.StatusUnauthorized)
+		return
+	}
+	post.IsOwner = (login != "" && login == post.Owner)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(post)

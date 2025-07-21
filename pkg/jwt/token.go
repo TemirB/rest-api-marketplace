@@ -2,9 +2,14 @@ package jwt
 
 import (
 	"errors"
+	"net/http"
 	"time"
 
 	jwt "github.com/golang-jwt/jwt/v5"
+)
+
+var (
+	ErrInvalidToken = errors.New("invalid token")
 )
 
 type Manager struct {
@@ -43,4 +48,13 @@ func (m *Manager) ValidateToken(tokenStr string) (string, error) {
 		return "", errors.New("login claim missing")
 	}
 	return login, nil
+}
+
+func GetLogin(r *http.Request) (string, error) {
+	if v := r.Context().Value("userLogin"); v != nil {
+		if login, ok := v.(string); ok {
+			return login, nil
+		}
+	}
+	return "", ErrInvalidToken
 }

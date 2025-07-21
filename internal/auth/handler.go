@@ -37,12 +37,8 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req struct {
-		Login    string `json:"login"`
-		Password string `json:"password"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	var user User
+	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		h.logger.Error(
 			"Error while decoding request body",
 			zap.Any("body", r.Body),
@@ -52,7 +48,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.Service.Register(req.Login, req.Password)
+	err := h.Service.Register(user.Login, user.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrUserExists):
@@ -71,13 +67,13 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info(
 		"User registered successfully",
-		zap.String("login", req.Login),
+		zap.String("login", user.Login),
 	)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{
-		"login": req.Login,
+		"login": user.Login,
 	})
 }
 
@@ -90,11 +86,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	var req struct {
-		Login    string `json:"login"`
-		Password string `json:"password"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	var user User
+	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		h.logger.Error(
 			"Error while decoding request body",
 			zap.Any("body", r.Body),
@@ -104,11 +97,11 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := h.Service.Login(req.Login, req.Password)
+	token, err := h.Service.Login(user.Login, user.Password)
 	if err != nil {
 		h.logger.Error(
 			"Error while logging in user",
-			zap.String("login", req.Login),
+			zap.String("login", user.Login),
 			zap.Error(err),
 		)
 		http.Error(w, "Unauthorized: "+err.Error(), http.StatusUnauthorized)
@@ -117,7 +110,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info(
 		"User logged in successfully",
-		zap.String("login", req.Login),
+		zap.String("login", user.Login),
 	)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{

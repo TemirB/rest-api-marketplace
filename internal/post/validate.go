@@ -1,6 +1,12 @@
 package post
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+	"net/url"
+	"path"
+	"strings"
+)
 
 var (
 	ErrMissingFields = fmt.Errorf("title and description are required")
@@ -8,6 +14,8 @@ var (
 	ErrNegativePrice = fmt.Errorf("price must be a positive number")
 	ErrRequiredURL   = fmt.Errorf("image URL is required")
 )
+
+var imageExts = map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".gif": true}
 
 func validatePost(post *Post) error {
 	if post.Title == "" || post.Description == "" {
@@ -19,10 +27,17 @@ func validatePost(post *Post) error {
 	if post.Price < 0 {
 		return ErrNegativePrice
 	}
-	if post.ImageURL == "" {
-		// Вообще тут стоит добавить валидацию URL, но пока просто проверяем, что он не пустой
-		return ErrRequiredURL
-	}
 
+	u, err := url.ParseRequestURI(post.ImageURL)
+	if err != nil {
+		return errors.New("invalid image URL")
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return errors.New("invalid URL scheme")
+	}
+	ext := strings.ToLower(path.Ext(u.Path))
+	if !imageExts[ext] {
+		return errors.New("unsupported image extension")
+	}
 	return nil
 }

@@ -9,6 +9,11 @@ import (
 	"go.uber.org/zap"
 )
 
+var (
+	weakPassword = "weakpassword"
+	securePWD    = "securePassword123!"
+)
+
 func TestService_Register(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -60,7 +65,7 @@ func TestService_Register(t *testing.T) {
 			name: "Registration_invalid_password",
 
 			login:    "testuser",
-			password: "weak",
+			password: weakPassword,
 
 			setupMocks: func(ctrl *gomock.Controller) *Service {
 				service := NewService(nil, nil, zap.NewNop())
@@ -74,7 +79,7 @@ func TestService_Register(t *testing.T) {
 			name: "Registration_user_already_exists",
 
 			login:    "testuser",
-			password: "securepassword",
+			password: securePWD,
 
 			setupMocks: func(ctrl *gomock.Controller) *Service {
 				storage := NewMockstorage(ctrl)
@@ -93,7 +98,7 @@ func TestService_Register(t *testing.T) {
 			name: "Registration_failed_storage",
 
 			login:    "testuser",
-			password: "securepassword",
+			password: securePWD,
 
 			setupMocks: func(ctrl *gomock.Controller) *Service {
 				storage := NewMockstorage(ctrl)
@@ -127,7 +132,7 @@ func TestService_Login(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	securePassword, _ := hash.EncryptPassword("securepassword")
+	securePassword, _ := hash.EncryptPassword(securePWD)
 
 	testCases := []struct {
 		name string
@@ -142,7 +147,7 @@ func TestService_Login(t *testing.T) {
 			name: "Valid_Login",
 
 			login:    "testuser",
-			password: "securepassword",
+			password: securePWD,
 
 			setupMocks: func(ctrl *gomock.Controller) *Service {
 				storage := NewMockstorage(ctrl)
@@ -173,7 +178,7 @@ func TestService_Login(t *testing.T) {
 			name: "Login_failed_to_find_user",
 
 			login:    "testuser",
-			password: "securepassword",
+			password: securePWD,
 
 			setupMocks: func(ctrl *gomock.Controller) *Service {
 				storage := NewMockstorage(ctrl)
@@ -189,7 +194,7 @@ func TestService_Login(t *testing.T) {
 			name: "Login_failed_to_compare_passwords",
 
 			login:    "testuser",
-			password: "wrongpassword",
+			password: weakPassword,
 
 			setupMocks: func(ctrl *gomock.Controller) *Service {
 				storage := NewMockstorage(ctrl)

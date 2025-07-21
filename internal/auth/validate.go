@@ -3,25 +3,45 @@ package auth
 import (
 	"database/sql"
 	"fmt"
+	"regexp"
+)
+
+var (
+	// Логин: 3–50 символов, только латиница, цифры, underscore, дефис,
+	// обязательно начинается и заканчивается на букву или цифру
+	loginRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{1,48}[A-Za-z0-9]$`)
+
+	// Пароль: минимум 8 символов, без пробелов,
+	// обязательно хотя бы одна цифра, одна нижняя и одна верхняя буква, один спецсимвол
+	digitRe   = regexp.MustCompile(`[0-9]`)
+	lowerRe   = regexp.MustCompile(`[a-z]`)
+	upperRe   = regexp.MustCompile(`[A-Z]`)
+	specialRe = regexp.MustCompile(`[!@#\$%\^&\*\(\)\-_\+=\[\]{}|;:'",.<>\/?]`)
 )
 
 // tested in service_test.go
 
 func validPassword(password string) bool {
-	// Нужно дописать логику валидации пароля
-	// Например проверить, что пароль не содержит пробелов etc...
-	if len(password) < 8 {
+	if len(password) < 8 || regexp.MustCompile(`\s`).MatchString(password) {
+		return false
+	}
+	if !digitRe.MatchString(password) {
+		return false
+	}
+	if !lowerRe.MatchString(password) {
+		return false
+	}
+	if !upperRe.MatchString(password) {
+		return false
+	}
+	if !specialRe.MatchString(password) {
 		return false
 	}
 	return true
 }
 
 func validLogin(login string) bool {
-	// Нужно дописать логику валидации логина
-	if len(login) < 3 || len(login) > 50 {
-		return false
-	}
-	return true
+	return loginRe.MatchString(login)
 }
 
 // Возвращает (true, nil), если пользователь найден;
