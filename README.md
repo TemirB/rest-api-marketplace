@@ -39,7 +39,7 @@ docker-compose up --build
 Сервисы запустятся на портах:
 
 * **Приложение**: `localhost:8080` (APP\_PORT из .env)
-* **PostgreSQL**: в Docker-сети на `postgres:5432` (не проброшен наружу)
+* **PostgreSQL**: `postgres:5432` внутри Docker-сети
 
 ### 4. Остановка
 
@@ -73,12 +73,15 @@ JWT_EXPIRATION=60
 
 ## API эндпойнты (кратко)
 
-| Метод | Путь          | Описание                   | Авторизация |
-| ----- | ------------- | -------------------------- | ----------- |
-| POST  | `/register`   | Регистрация пользователя   | Нет         |
-| POST  | `/login`      | Получение JWT токена       | Нет         |
-| POST  | `/posts`      | Создание объявления        | Да          |
-| GET   | `/posts/feed` | Получение ленты объявлений | Нет         |
+| Метод  | Путь          | Описание                         | Авторизация |
+| ------ | ------------- | -------------------------------- | ----------- |
+| POST   | `/register`   | Регистрация пользователя         | Нет         |
+| POST   | `/login`      | Получение JWT токена             | Нет         |
+| POST   | `/posts`      | Создание объявления              | Да          |
+| GET    | `/posts/feed` | Получение ленты объявлений       | Нет         |
+| GET    | `/posts/{id}` | Получение объявления по ID       | Нет         |
+| PUT    | `/posts/{id}` | Редактирование своего объявления | Да          |
+| DELETE | `/posts/{id}` | Удаление своего объявления       | Да          |
 
 ---
 
@@ -95,14 +98,12 @@ Request:
 
 Responses:
   201 Created:
-    Content-Type: application/json
     Body: { login: string }
   400 Bad Request:
-    Причины: валидация login/password или некорректный JSON
+    Причины: валидация или некорректный JSON
   409 Conflict:
     Пользователь уже существует
-  500 Internal Server Error:
-    Внутренняя ошибка сервера
+  500 Internal Server Error
 ```
 
 ### 2. POST `/login`
@@ -116,14 +117,10 @@ Request:
 
 Responses:
   200 OK:
-    Content-Type: application/json
     Body: { token: string }
-  400 Bad Request:
-    Некорректный JSON
-  401 Unauthorized:
-    Неправильный логин или пароль
-  405 Method Not Allowed:
-    Неверный HTTP метод
+  400 Bad Request
+  401 Unauthorized
+  405 Method Not Allowed
 ```
 
 ### 3. POST `/posts`
@@ -131,7 +128,7 @@ Responses:
 ```yaml
 Request:
   Content-Type: application/json
-  Authorization: Bearer <JWT-token>
+  Authorization: Bearer <token>
   Body:
     title: string (1-100 chars)
     description: string (1-2000 chars)
@@ -140,16 +137,10 @@ Request:
 
 Responses:
   201 Created:
-    Content-Type: application/json
-    Body: Post object:
-      ID, title, description, price, image_url,
-      created_at (ISO 8601), owner (login), is_owner: bool
-  400 Bad Request:
-    Ошибка валидации полей или создание не удалось
-  401 Unauthorized:
-    Нет или неверный токен
-  405 Method Not Allowed:
-    Неверный HTTP метод
+    Body: Post object (см. ниже)
+  400 Bad Request
+  401 Unauthorized
+  405 Method Not Allowed
 ```
 
 ### 4. GET `/posts/feed`
@@ -157,38 +148,93 @@ Responses:
 ```yaml
 Request:
   GET /posts/feed
-  Query Params (optional):
-    min_price: number
-    max_price: number
-    sort_by: price | created_at
-    order: asc | desc
+  Query Params:
+    min_price, max_price, sort_by, order
 
 Responses:
   200 OK:
-    Content-Type: application/json
-    Body: Array of Post objects (см. выше)
-  405 Method Not Allowed:
-    Неверный HTTP метод
-  500 Internal Server Error:
-    Ошибка на сервере
+    Body: [ Post ]
+  405 Method Not Allowed
+```
+
+### 5. GET `/posts/{id}`
+
+```yaml
+Request:
+  GET /posts/{id}
+
+Responses:
+  200 OK:
+    Body: Post object
+  404 Not Found:
+    Если объявление не существует
+  405 Method Not Allowed
+```
+
+### 6. PUT `/posts/{id}`
+
+```yaml
+Request:
+  Content-Type: application/json
+  Authorization: Bearer <token>
+  Body (любые поля для обновления):
+    title?, description?, price?, image_url?
+
+Responses:
+  200 OK:
+    Body: обновленный Post object
+  400 Bad Request
+  401 Unauthorized
+  403 Forbidden:
+    Если пытаются редактировать чужой пост
+  404 Not Found:
+    Если объявление не найдено
+  405 Method Not Allowed
+```
+
+### 7. DELETE `/posts/{id}`
+
+```yaml
+Request:
+  Authorization: Bearer <token>
+
+Responses:
+  204 No Content:
+    Успешно удалено
+  401 Unauthorized
+  403 Forbidden:
+    Попытка удалить чужой пост
+  404 Not Found
+  405 Method Not Allowed
+```
+
+**Post object:**
+
+```json
+{
+  "ID": 1,
+  "title": "...",
+  "description": "...",
+  "price": 123.45,
+  "image_url": "...",
+  "created_at": "2025-07-21T...Z",
+  "owner": "login",
+  "is_owner": true|false
+}
 ```
 
 ---
 
 ## Аутентификация
 
-1. **Регистрация**: `POST /register` → логин+пароль → создается пользователь.
-2. **Логин**: `POST /login` → возвращает JWT токен.
-3. **Защищенные эндпойнты** (`/posts`):
+1. **Регистрация**: POST `/register` → логин+пароль → создается пользователь.
+2. **Логин**: POST `/login` → возвращает JWT токен.
+3. **Защищенные эндпойнты** (`/posts`, `/posts/{id}` для PUT/DELETE):
 
-   * Добавьте заголовок:
-
-     ```http
-     Authorization: Bearer <token>
-     ```
-   * Если токен отсутствует или невалиден → 401 Unauthorized.
-4. **Публичные эндпойнты**: `/register`, `/login`, `/posts/feed` доступны без токена.
+   * Заголовок: `Authorization: Bearer <token>`
+   * При отсутствии/невалидности токена — 401 Unauthorized.
+4. **Публичные эндпойнты**: `/register`, `/login`, `/posts/feed`, `/posts/{id}` доступны без токена.
 
 ---
 
-*Документация сгенерирована автоматически.*
+*Документация обновлена: добавлены операции CRUD для Posts.*
