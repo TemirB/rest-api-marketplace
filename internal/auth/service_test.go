@@ -54,7 +54,7 @@ func TestService_Register(t *testing.T) {
 				return service
 			},
 
-			expectedError: InvalidLogin,
+			expectedError: ErrInvalidLogin,
 		},
 		{
 			name: "Registration_invalid_password",
@@ -68,7 +68,7 @@ func TestService_Register(t *testing.T) {
 				return service
 			},
 
-			expectedError: InvalidPassword,
+			expectedError: ErrInvalidPassword,
 		},
 		{
 			name: "Registration_user_already_exists",
@@ -150,7 +150,7 @@ func TestService_Login(t *testing.T) {
 				return service
 			},
 
-			expectedError: InvalidLogin,
+			expectedError: ErrInvalidLogin,
 		},
 		{
 			name: "Login_failed_to_find_user",
@@ -166,7 +166,7 @@ func TestService_Login(t *testing.T) {
 				return service
 			},
 
-			expectedError: InvalidCredentials,
+			expectedError: ErrInvalidCredentials,
 		},
 		{
 			name: "Login_failed_to_compare_passwords",
@@ -182,7 +182,7 @@ func TestService_Login(t *testing.T) {
 				return service
 			},
 
-			expectedError: InvalidCredentials,
+			expectedError: ErrInvalidCredentials,
 		},
 	}
 
