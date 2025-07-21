@@ -22,9 +22,16 @@ func NewService(repository storage, logger *zap.Logger) *Service {
 }
 
 func (s *Service) CreatePost(post *Post) (*Post, error) {
-	err := s.repository.Create(post)
+	err := validatePost(post)
 	if err != nil {
-
+		s.logger.Error(
+			"Validation error",
+			zap.Error(err),
+		)
+		return nil, err
+	}
+	err = s.repository.Create(post)
+	if err != nil {
 		return nil, err
 	}
 

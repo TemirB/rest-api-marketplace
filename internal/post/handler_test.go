@@ -1,8 +1,18 @@
 package post
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"testing"
+
+	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
 )
 
 func Test_setFilter(t *testing.T) {
@@ -206,34 +216,160 @@ func Test_setSort(t *testing.T) {
 	}
 }
 
-// // TODO: Add test cases for GetPosts and UpdatePost functions
-// func Test_CreatePost(t *testing.T) {
-// 	testCases := []struct {
-// 		name string
+func TestHandler_GetPosts_Success(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockService := NewMockservice(ctrl)
+	handler := NewHandler(mockService, zap.NewNop())
 
-// 		method string
-// 		post   Post
+	posts := []*Post{
+		{ID: 1, Title: "First", Price: 50, Owner: "alice", IsOwner: true},
+		{ID: 2, Title: "Second", Price: 150, Owner: "bob", IsOwner: false},
+	}
+	mockService.EXPECT().GetPosts(gomock.Any(), gomock.Any()).Return(posts, nil)
 
-// 		expected Post
-// 	}{
-// 		{
-// 			name: "1. Valid_Post",
-// 			post: Post{
-// 				Title:       "Test Post",
-// 				Description: "This is a test post.",
-// 				Price:       10.0,
-// 				ImageURL:    "https://example.com/image.jpg",
-// 				Owner:       "testuser",
-// 			},
+	req := httptest.NewRequest(http.MethodGet, "/posts/feed", nil)
+	ctx := context.WithValue(req.Context(), "userLogin", "alice")
+	req = req.WithContext(ctx)
+	rr := httptest.NewRecorder()
 
-// 			expected: Post{
-// 				Title:       "Test Post",
-// 				Description: "This is a test post.",
-// 				Price:       10.0,
-// 				ImageURL:    "https://example.com/image.jpg",
-// 				Owner:       "testuser",
-// 				ID:          1,
-// 			},
-// 		},
-// 	}
-// }
+	handler.GetPosts(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
+
+	var respPosts []Post
+	err := json.Unmarshal(rr.Body.Bytes(), &respPosts)
+	assert.NoError(t, err)
+	assert.Len(t, respPosts, 2)
+
+	for _, p := range respPosts {
+		if p.Owner == "alice" {
+			assert.True(t, p.IsOwner)
+		} else {
+			assert.False(t, p.IsOwner)
+		}
+	}
+}
+
+func TestHandler_GetPosts_WrongMethod(t *testing.T) {
+	handler := NewHandler(nil, zap.NewNop())
+
+	req := httptest.NewRequest(http.MethodDelete, "/posts/feed", nil)
+	rr := httptest.NewRecorder()
+
+	handler.GetPosts(rr, req)
+
+	assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+}
+
+func TestHandler_GetPosts_ServiceErr(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockService := NewMockservice(ctrl)
+	handler := NewHandler(mockService, zap.NewNop())
+	mockService.EXPECT().GetPosts(gomock.Any(), gomock.Any()).Return(nil, errors.New("service error"))
+
+	req := httptest.NewRequest(http.MethodGet, "/posts/feed", nil)
+	ctx := context.WithValue(req.Context(), "userLogin", "alice")
+	req = req.WithContext(ctx)
+	rr := httptest.NewRecorder()
+
+	handler.GetPosts(rr, req)
+
+	assert.Equal(t, http.StatusInternalServerError, rr.Code)
+}
+
+func TestHandler_CreatePost(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	testCases := []struct {
+		name string
+
+		method     string
+		url        string
+		body       []byte
+		setupMocks func(mockService *Mockservice)
+
+		unauthorized bool
+		expectedCode int
+	}{
+		{
+			name:   "1. Valid_Create_Post_Request",
+			method: http.MethodPost,
+			url:    "/posts",
+			body:   []byte(`{"title": "New Post", "price": 100, "owner": "alice", "description": "This is a new post", "image_url": "new_post.jpg"}`),
+			setupMocks: func(mockService *Mockservice) {
+				post := &Post{Title: "New Post", Price: 100, Owner: "alice", Description: "This is a new post", ImageURL: "new_post.jpg"}
+				mockService.EXPECT().CreatePost(post).Return(post, nil)
+			},
+
+			expectedCode: http.StatusCreated,
+		},
+		{
+			name:   "2. Invalid_Create_Post_Wrong_Method",
+			method: http.MethodDelete,
+			url:    "/posts",
+			body:   []byte(`{"price": 100, "owner": "alice", "description": "This is a new post", "image_url": "new_post.jpg"}`),
+			setupMocks: func(mockService *Mockservice) {
+				// No-op
+			},
+
+			expectedCode: http.StatusMethodNotAllowed,
+		},
+		{
+			name:   "3. Invalid_Create_Post_Unautharized",
+			method: http.MethodPost,
+			url:    "/posts",
+			body:   []byte(`{"price": 100, "owner": "alice", "description": "This is a new post", "image_url": "new_post.jpg"}`),
+			setupMocks: func(mockService *Mockservice) {
+				// No-op
+			},
+
+			unauthorized: true,
+			expectedCode: http.StatusUnauthorized,
+		},
+		{
+			name:   "4. Invalid_JSON_Body",
+			method: http.MethodPost,
+			url:    "/posts",
+			body:   []byte(`{"price": 100, "owner": "alice", "description": "This is a new post", "image_url": "new_post.jpg",`),
+			setupMocks: func(mockService *Mockservice) {
+				// No-op
+			},
+
+			expectedCode: http.StatusBadRequest,
+		},
+		{
+			name:   "5. Service_Error",
+			method: http.MethodPost,
+			url:    "/posts",
+			body:   []byte(`{"price": 100, "owner": "alice", "description": "This is a new post", "image_url": "new_post.jpg"}`),
+			setupMocks: func(mockService *Mockservice) {
+				mockService.EXPECT().CreatePost(gomock.Any()).Return(nil, errors.New("service error"))
+			},
+
+			expectedCode: http.StatusBadRequest,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			service := NewMockservice(ctrl)
+			tc.setupMocks(service)
+			handler := NewHandler(service, zap.NewNop())
+			req, _ := http.NewRequest(tc.method, tc.url, bytes.NewBuffer(tc.body))
+			if !tc.unauthorized {
+				ctx := context.WithValue(req.Context(), "userLogin", "alice")
+				req = req.WithContext(ctx)
+			}
+
+			rr := httptest.NewRecorder()
+
+			handler.CreatePost(rr, req)
+
+			assert.Equal(t, tc.expectedCode, rr.Code)
+		})
+	}
+}
