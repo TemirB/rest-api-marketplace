@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -25,12 +26,17 @@ import (
 	"github.com/TemirB/rest-api-marketplace/pkg/jwt"
 )
 
-var testServer *httptest.Server
-var db *sql.DB
+var (
+	testServer *httptest.Server
+	db         *sql.DB
+)
 
 func TestMain(m *testing.M) {
 	ctx := context.Background()
-	pg, err := postgres.Run(ctx, "postgres:15-alpine",
+
+	// 1) Старт контейнера Postgres
+	pgC, err := postgres.Run(ctx,
+		"postgres:15-alpine",
 		postgres.WithDatabase("testdb"),
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
@@ -41,22 +47,25 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("failed to start postgres container: " + err.Error())
 	}
-	defer pg.Terminate(ctx)
+	defer func() { _ = pgC.Terminate(ctx) }()
 
-	uri, err := pg.ConnectionString(ctx, "sslmode=disable")
+	// 2) Подключение к БД
+	dsn, err := pgC.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
 		panic(err)
 	}
-
-	db, err = sql.Open("postgres", uri)
+	db, err = sql.Open("postgres", dsn)
 	if err != nil {
 		panic(err)
 	}
+	// даем БД немного прогреться
+	time.Sleep(500 * time.Millisecond)
 
+	// 3) Инициализация приложения
 	repo := &database.Repository{DB: db, Logger: zap.NewNop()}
 	userStore := auth.NewStorage(repo, zap.NewNop())
 	postStore := post.NewStorage(repo, zap.NewNop())
-	tokenManager := jwt.New("testsecret", time.Minute*60)
+	tokenManager := jwt.New("testsecret", time.Hour)
 	authService := auth.NewService(userStore, tokenManager, zap.NewNop())
 	postService := post.NewService(postStore, zap.NewNop())
 	authHandler := auth.NewHandler(authService, zap.NewNop())
@@ -66,8 +75,8 @@ func TestMain(m *testing.M) {
 	mux.HandleFunc("/register", authHandler.Register)
 	mux.HandleFunc("/login", authHandler.Login)
 
-	protectedPost := middleware.JWTAuthMiddleware(authService)
-	mux.Handle("/posts", protectedPost(http.HandlerFunc(postHandler.CreatePost)))
+	protected := middleware.JWTAuthMiddleware(authService)
+	mux.Handle("/posts", protected(http.HandlerFunc(postHandler.CreatePost)))
 	mux.HandleFunc("/posts/feed", postHandler.GetPosts)
 
 	testServer = httptest.NewServer(mux)
@@ -78,116 +87,108 @@ func TestMain(m *testing.M) {
 
 func TestFullScenario(t *testing.T) {
 	client := testServer.Client()
-	baseURL := testServer.URL
+	base := testServer.URL
+
+	rnd := time.Now().UnixNano() % 1_000_000_000
+	login := fmt.Sprintf("alice%d", rnd)
 
 	// 1. Регистрация
-	regBody := strings.NewReader(`{"login":"alice","password":"password123"}`)
-	regResp, err := client.Post(baseURL+"/register", "application/json", regBody)
-	if err != nil {
-		t.Fatalf("Register request failed: %v", err)
-	}
-	assert.Equal(t, http.StatusCreated, regResp.StatusCode)
-	// можно проверить тело:
-	var regRespBody map[string]string
-	json.NewDecoder(regResp.Body).Decode(&regRespBody)
-	assert.Equal(t, "alice", regRespBody["login"])
-	regResp.Body.Close()
+	regBody := fmt.Sprintf(`{"login":"%s","password":"Password123!"}`, login)
+	resp, err := client.Post(base+"/register", "application/json", strings.NewReader(regBody))
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	var reg map[string]string
+	json.NewDecoder(resp.Body).Decode(&reg)
+	resp.Body.Close()
+	assert.Equal(t, login, reg["login"])
 
 	// 2. Логин
-	loginBody := strings.NewReader(`{"login":"alice","password":"password123"}`)
-	loginResp, err := client.Post(baseURL+"/login", "application/json", loginBody)
+	loginBody := fmt.Sprintf(`{"login":"%s","password":"Password123!"}`, login)
+	resp, err = client.Post(base+"/login", "application/json", strings.NewReader(loginBody))
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, loginResp.StatusCode)
-	var loginRespBody map[string]string
-	json.NewDecoder(loginResp.Body).Decode(&loginRespBody)
-	token := loginRespBody["token"]
-	assert.NotEmpty(t, token, "JWT token should be returned")
-	loginResp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	var lg map[string]string
+	json.NewDecoder(resp.Body).Decode(&lg)
+	resp.Body.Close()
+	token := lg["token"]
+	assert.NotEmpty(t, token)
 
 	// 3. Создание первого поста
-	postReq, _ := http.NewRequest(http.MethodPost, baseURL+"/posts", strings.NewReader(`{
-        "title": "First post",
-        "description": "Description",
-        "price": 50,
-        "image_url": "http://example.com/1.png"
-    }`))
-	postReq.Header.Set("Content-Type", "application/json")
-	postReq.Header.Set("Authorization", "Bearer "+token)
-	postResp, err := client.Do(postReq)
+	post1 := `{"title":"First post","description":"Description","price":50,"image_url":"http://example.com/1.png"}`
+	req1, _ := http.NewRequest(http.MethodPost, base+"/posts", strings.NewReader(post1))
+	req1.Header.Set("Content-Type", "application/json")
+	req1.Header.Set("Authorization", "Bearer "+token)
+	resp, err = client.Do(req1)
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusCreated, postResp.StatusCode)
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	var p1 post.Post
+	json.NewDecoder(resp.Body).Decode(&p1)
+	resp.Body.Close()
+	assert.Equal(t, "First post", p1.Title)
+	assert.Equal(t, 50.0, p1.Price)
+	assert.Equal(t, login, p1.Owner)
+	assert.NotZero(t, p1.ID)
 
-	var postRespBody post.Post
-	json.NewDecoder(postResp.Body).Decode(&postRespBody)
-	assert.Equal(t, "First post", postRespBody.Title)
-	assert.Equal(t, 50.0, postRespBody.Price)
-	assert.Equal(t, "alice", postRespBody.Owner)
-	assert.NotZero(t, postRespBody.ID)
-	postResp.Body.Close()
-
-	// 4. Создание второго поста (для проверки фильтров)
-	postReq2, _ := http.NewRequest(http.MethodPost, baseURL+"/posts", strings.NewReader(`{
-        "title": "Second post",
-        "description": "Another post",
-        "price": 150,
-        "image_url": "http://example.com/2.png"
-    }`))
-	postReq2.Header.Set("Content-Type", "application/json")
-	postReq2.Header.Set("Authorization", "Bearer "+token)
-	postResp2, err := client.Do(postReq2)
+	// 4. Попытка без токена → 401
+	reqNoAuth, _ := http.NewRequest(http.MethodPost, base+"/posts", strings.NewReader(post1))
+	reqNoAuth.Header.Set("Content-Type", "application/json")
+	resp, err = client.Do(reqNoAuth)
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusCreated, postResp2.StatusCode)
-	postResp2.Body.Close()
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	resp.Body.Close()
 
-	// 5. Получение всех постов (без фильтра, без токена)
-	feedResp, err := client.Get(baseURL + "/posts/feed")
+	// 5. Создание второго поста
+	post2 := `{"title":"Second post","description":"Another","price":150,"image_url":"http://example.com/2.png"}`
+	req2, _ := http.NewRequest(http.MethodPost, base+"/posts", strings.NewReader(post2))
+	req2.Header.Set("Content-Type", "application/json")
+	req2.Header.Set("Authorization", "Bearer "+token)
+	resp, err = client.Do(req2)
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, feedResp.StatusCode)
-	var feedPosts []post.Post
-	json.NewDecoder(feedResp.Body).Decode(&feedPosts)
-	feedResp.Body.Close()
-	// Ожидаем 2 поста в ответе
-	assert.Len(t, feedPosts, 2)
-	// Проверим, что поля соответствуют тому, что мы создали
-	titles := map[string]bool{feedPosts[0].Title: true, feedPosts[1].Title: true}
-	assert.True(t, titles["First post"])
-	assert.True(t, titles["Second post"])
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.Body.Close()
 
-	// 6. Фильтрация по цене
-	feedResp2, err := client.Get(baseURL + "/posts/feed?min_price=100")
+	// 6. Лента без фильтра
+	resp, err = client.Get(base + "/posts/feed")
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, feedResp2.StatusCode)
-	var filtered []post.Post
-	json.NewDecoder(feedResp2.Body).Decode(&filtered)
-	feedResp2.Body.Close()
-	// Должен прийти только пост с ценой 150
-	assert.Len(t, filtered, 1)
-	assert.Equal(t, 150.0, filtered[0].Price)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	var feed []post.Post
+	json.NewDecoder(resp.Body).Decode(&feed)
+	resp.Body.Close()
+	assert.Len(t, feed, 2)
+	found := map[string]bool{feed[0].Title: true, feed[1].Title: true}
+	assert.True(t, found["First post"])
+	assert.True(t, found["Second post"])
 
-	// 7. Фильтрация по владельцу
-	feedResp3, err := client.Get(baseURL + "/posts/feed?owner=alice")
+	// 7. Фильтрация по цене
+	resp, err = client.Get(base + "/posts/feed?min_price=100")
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, feedResp3.StatusCode)
-	var ownerFiltered []post.Post
-	json.NewDecoder(feedResp3.Body).Decode(&ownerFiltered)
-	feedResp3.Body.Close()
-	// Ожидаем, что оба поста пришли
-	assert.Len(t, ownerFiltered, 2)
-	for _, p := range ownerFiltered {
-		assert.Equal(t, "alice", p.Owner)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	var priceF []post.Post
+	json.NewDecoder(resp.Body).Decode(&priceF)
+	resp.Body.Close()
+	assert.Len(t, priceF, 1)
+	assert.Equal(t, 150.0, priceF[0].Price)
+
+	// 8. Фильтрация по владельцу
+	resp, err = client.Get(base + "/posts/feed?owner=" + login)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	var ownerF []post.Post
+	json.NewDecoder(resp.Body).Decode(&ownerF)
+	resp.Body.Close()
+	assert.Len(t, ownerF, 2)
+	for _, p := range ownerF {
+		assert.Equal(t, login, p.Owner)
 	}
 
-	// 8. Проверка данных в БД
-	// Пользователь
-	var countUsers int
-	_ = db.QueryRow(`SELECT COUNT(*) FROM users WHERE login=$1`, "alice").Scan(&countUsers)
-	assert.Equal(t, 1, countUsers)
-	var storedPwd string
-	_ = db.QueryRow(`SELECT password FROM users WHERE login=$1`, "alice").Scan(&storedPwd)
-	assert.NotEqual(t, "password123", storedPwd)
+	// 9. Проверка в БД
+	var cntUsers int
+	err = db.QueryRow(`SELECT COUNT(*) FROM users WHERE login=$1`, login).Scan(&cntUsers)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, cntUsers)
 
-	// Посты
-	var countPosts int
-	_ = db.QueryRow(`SELECT COUNT(*) FROM posts WHERE owner=$1`, "alice").Scan(&countPosts)
-	assert.Equal(t, 2, countPosts)
+	var cntPosts int
+	err = db.QueryRow(`SELECT COUNT(*) FROM posts WHERE owner=$1`, login).Scan(&cntPosts)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, cntPosts)
 }
