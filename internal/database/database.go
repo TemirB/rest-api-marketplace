@@ -55,3 +55,10 @@ func (r *Repository) Close() error {
 	}
 	return nil
 }
+
+func (r *Repository) Exec(query string, args ...any) (sql.Result, error) {
+	return r.DB.Exec(query, args...)
+}
+func (r *Repository) QueryRow(query string, args ...any) *sql.Row {
+	return r.DB.QueryRow(query, args...)
+}

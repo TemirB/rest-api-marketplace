@@ -4,11 +4,13 @@ import (
 	"context"
 	"net/http"
 	"strings"
-
-	"github.com/TemirB/rest-api-marketplace/internal/auth"
 )
 
-func JWTAuthMiddleware(authService *auth.Service) func(http.Handler) http.Handler {
+type authService interface {
+	ValidateToken(tokenStr string) (string, error)
+}
+
+func JWTAuthMiddleware(authService authService) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")

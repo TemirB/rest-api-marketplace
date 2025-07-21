@@ -46,12 +46,12 @@ func main() {
 	defer dbRepo.Close()
 
 	// Initialize storages
-	userDB := auth.NewStorage(dbRepo)
+	userDB := auth.NewStorage(dbRepo, logger)
 	postDB := post.NewStorage(dbRepo)
 
 	// Initialize services
 	tokemManager := jwt.New(cfg.JWT.Secret, time.Duration(cfg.JWT.Expiration)*time.Minute)
-	authService := auth.NewService(userDB, tokemManager)
+	authService := auth.NewService(userDB, tokemManager, logger)
 	postService := post.NewService(postDB)
 
 	// Initialize middleware

@@ -1,10 +1,12 @@
 package auth
 
+// mockgen  -source=service.go -destination=service_mock_test.go -package=auth
+
 import (
 	"errors"
 
 	"github.com/TemirB/rest-api-marketplace/pkg/hash"
-	"github.com/TemirB/rest-api-marketplace/pkg/jwt"
+	"go.uber.org/zap"
 )
 
 var (
@@ -16,36 +18,67 @@ var (
 	InvalidCredentials = errors.New("invalid credentials")
 )
 
+type storage interface {
+	Create(user *User) error
+	GetByLogin(login string) (*User, error)
+	Exists(login string) (bool, error)
+}
+type manager interface {
+	GenerateToken(login string) (string, error)
+	ValidateToken(tokenStr string) (string, error)
+}
+
 type Service struct {
-	storage *storage
-	manager *jwt.Manager
+	storage storage
+	manager manager
+	logger  *zap.Logger
 }
 
 func NewService(
-	storage *storage,
-	tokenGenerator *jwt.Manager,
+	storage storage,
+	manager manager,
+	logger *zap.Logger,
 ) *Service {
 	return &Service{
 		storage: storage,
-		manager: tokenGenerator,
+		manager: manager,
+		logger:  logger,
 	}
 }
 
 func (s *Service) Register(login, password string) error {
 	if !validLogin(login) {
+		s.logger.Info(
+			"invalid login",
+			zap.String("login", login),
+		)
 		return InvalidLogin
 	}
 
 	if !validPassword(password) {
+		s.logger.Info(
+			"invalid password",
+			// zap.String("password", password), is it legit???
+		)
 		return InvalidPassword
 	}
 
-	if yes, err := s.userExist(login); !yes || err != nil {
+	if no, err := s.userExist(login); no || err != nil {
+		s.logger.Info(
+			"user already exists or db error",
+			zap.String("login", login),
+			zap.Error(err),
+		)
 		return err
 	}
 
 	EncryptedPassword, err := hash.EncryptPassword(password)
 	if err != nil {
+		s.logger.Error(
+			"failed to encrypt password",
+			zap.String("login", login),
+			zap.Error(err),
+		)
 		return FailedToEncryptPassword
 	}
 
@@ -58,12 +91,29 @@ func (s *Service) Register(login, password string) error {
 }
 
 func (s *Service) Login(login, password string) (string, error) {
+	if !validLogin(login) {
+		s.logger.Info(
+			"invalid login",
+			zap.String("login", login),
+		)
+		return "", InvalidLogin
+	}
 	user, err := s.storage.GetByLogin(login)
 	if err != nil {
+		s.logger.Error(
+			"failed to get user by login",
+			zap.String("login", login),
+			zap.Error(err),
+		)
 		return "", InvalidCredentials
 	}
 
-	if hash.ComparePasswords(user.Password, password) {
+	if !hash.ComparePasswords(user.Password, password) {
+		s.logger.Info(
+			"password is incorrect",
+			zap.String("login", login),
+			// zap.String("password", password), is it legit???
+		)
 		return "", InvalidCredentials
 	}
 

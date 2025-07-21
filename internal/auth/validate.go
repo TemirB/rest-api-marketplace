@@ -6,10 +6,12 @@ import (
 	"fmt"
 )
 
+// tested in service_test.go
+
 func validPassword(password string) bool {
 	// Нужно дописать логику валидации пароля
 	// Например проверить, что пароль не содержит пробелов etc...
-	if len(password) == 0 {
+	if len(password) < 8 {
 		return false
 	}
 	return true
