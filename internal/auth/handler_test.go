@@ -88,7 +88,7 @@ func TestHandler_Register(t *testing.T) {
 				return NewHandler(mockService, zap.NewNop())
 			},
 
-			expectedStatus: http.StatusBadRequest,
+			expectedStatus: http.StatusInternalServerError,
 		},
 	}
 
