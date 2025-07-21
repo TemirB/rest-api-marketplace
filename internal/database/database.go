@@ -62,3 +62,7 @@ func (r *Repository) Exec(query string, args ...any) (sql.Result, error) {
 func (r *Repository) QueryRow(query string, args ...any) *sql.Row {
 	return r.DB.QueryRow(query, args...)
 }
+
+func (r *Repository) Query(query string, args ...any) (*sql.Rows, error) {
+	return r.DB.Query(query, args...)
+}
