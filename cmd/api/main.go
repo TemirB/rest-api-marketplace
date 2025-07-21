@@ -100,5 +100,5 @@ func main() {
 
 	ServerAddress := ":" + strconv.Itoa(cfg.AppPort)
 	log.Printf("Server started at %s\n", ServerAddress)
-	http.ListenAndServe(ServerAddress, mux)
+	log.Fatal(http.ListenAndServe(ServerAddress, mux))
 }

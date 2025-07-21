@@ -52,7 +52,7 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 			"Internal Server Error: invalid user context",
 			zap.String("author", "jwt.GetLogin(r) == nil"),
 		)
-		http.Error(w, "Internal Server Error: invalid user context", http.StatusUnauthorized)
+		http.Error(w, "Internal Server Error: invalid user context", http.StatusForbidden)
 		return
 	}
 
@@ -189,6 +189,16 @@ func (h *Handler) UpdatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	login, err := jwt.GetLogin(r)
+	if err != nil {
+		h.logger.Info(
+			"Internal Server Error: invalid user context",
+			zap.String("author", "jwt.GetLogin(r) == nil"),
+		)
+		http.Error(w, "Internal Server Error: invalid user context", http.StatusForbidden)
+		return
+	}
+
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) != 3 || parts[1] != "posts" {
 		http.Error(w, "Not Found", http.StatusNotFound)
@@ -218,18 +228,12 @@ func (h *Handler) UpdatePost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusBadRequest)
 		return
 	}
-	login, err := jwt.GetLogin(r)
-	if err != nil {
-		h.logger.Info(
-			"Internal Server Error: invalid user context",
-			zap.String("author", "jwt.GetLogin(r) == nil"),
-		)
-		http.Error(w, "Internal Server Error: invalid user context", http.StatusUnauthorized)
-		return
-	}
 	post.IsOwner = false
 	if post.Owner == login {
 		post.IsOwner = true
+	} else {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
 	}
 
 	mergePostUpdates(post, updatePostRequest)
@@ -276,7 +280,7 @@ func (h *Handler) DeletePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id64, err := strconv.ParseUint(parts[2], 10, 32)
+	id64, err := strconv.ParseUint(parts[2], 10, 64)
 	if err != nil {
 		http.Error(w, "Bad Request: invalid id", http.StatusBadRequest)
 		return
@@ -293,7 +297,7 @@ func (h *Handler) DeletePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if post.Owner != r.Context().Value(middleware.CtxUser) {
-		http.Error(w, "Unauthorized: not owner", http.StatusUnauthorized)
+		http.Error(w, "Unauthorized: not owner", http.StatusForbidden)
 		return
 	}
 
