@@ -202,7 +202,7 @@ func (h *Handler) UpdatePost(w http.ResponseWriter, r *http.Request) {
 	}
 	id := uint(id64)
 
-	var updatePostRequest *UpdatePostRequest
+	updatePostRequest := &UpdatePostRequest{}
 	if err := json.NewDecoder(r.Body).Decode(updatePostRequest); err != nil {
 		http.Error(w, "Bad Request: "+err.Error(), http.StatusBadRequest)
 		return
@@ -339,15 +339,7 @@ func (h *Handler) GetPostByID(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	login, err := jwt.GetLogin(r)
-	if err != nil {
-		h.logger.Info(
-			"Internal Server Error: invalid user context",
-			zap.String("author", "jwt.GetLogin(r) == nil"),
-		)
-		http.Error(w, "Internal Server Error: invalid user context", http.StatusUnauthorized)
-		return
-	}
+	login, _ := jwt.GetLogin(r)
 	post.IsOwner = (login != "" && login == post.Owner)
 
 	w.Header().Set("Content-Type", "application/json")

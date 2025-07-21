@@ -2,34 +2,31 @@
 set -euo pipefail
 
 BASE_URL="http://localhost:8080"
-# Уникальный логин, чтобы тесты не конфликтовали с прошлым запуском
-USER="alice_$(date +%s)"
+USER_A="alice_$(date +%s)"
+PASS_A="Secret123!"
 
 # Заголовочные наборы
 headers_json=("Content-Type: application/json")
 headers_none=()
-# headers_auth_json будем формировать после логина
 
-# Функция выполнения теста
-# $1 — описание
-# $2 — метод
-# $3 — URL
-# $4 — данные (строка или "")
-# $5 — имя переменной-с-именем-массива заголовков (напр. headers_json)
-# $6 — ожидаемый HTTP-код
+# Универсальная функция запуска теста
+# $1 – описание
+# $2 – метод
+# $3 – URL
+# $4 – тело запроса (или "")
+# $5 – имя массива заголовков (например: headers_json[@] или headers_auth_a[@])
+# $6 – ожидаемый статус
 run_test() {
-  local desc=$1 method=$2 url=$3 data=$4 hdrs_name=$5 expect=$6
+  local desc=$1 method=$2 url=$3 data=$4 hdrs_ref=$5 expect=$6
 
-  # Достаём массив заголовков по имени
-  local headers=()
-  eval "headers=(\"\${${hdrs_name}[@]}\")"
+  # Разворачиваем массив-заголовков по имени
+  local hdrs=()
+  eval "hdrs=( \"\${${hdrs_ref}}\" )"
 
   echo -n "Test: $desc ... "
-
-  # Формируем curl
   local args=(-s -o /tmp/response -w "%{http_code}" -X "$method" "$url")
-  for hdr in "${headers[@]}"; do
-    args+=(-H "$hdr")
+  for h in "${hdrs[@]}"; do
+    args+=(-H "$h")
   done
   if [[ -n $data ]]; then
     args+=(-d "$data")
@@ -41,62 +38,58 @@ run_test() {
     echo "OK ($code)"
   else
     echo "FAIL (got $code, expected $expect)"
-    echo "Response body:"
+    echo "Body:"
     cat /tmp/response
     exit 1
   fi
 }
 
-echo "== Starting API tests for user $USER =="
+echo "== Starting API tests for Alice ($USER_A) =="
 
 # 1. Регистрация
-run_test "Register new user $USER" \
+run_test "Register Alice" \
   POST "$BASE_URL/register" \
-  "{\"login\":\"$USER\",\"password\":\"Secret123\"}" \
-  headers_json 201
+  "{\"login\":\"$USER_A\",\"password\":\"$PASS_A\"}" \
+  headers_json[@] 201
 
-# 1.1. Слишком короткий логин => 400
+# 1.1. Короткий логин → 400
 run_test "Register short login" \
   POST "$BASE_URL/register" \
-  '{"login":"ab","password":"Secret123"}' \
-  headers_json 400
+  '{"login":"ab","password":"Secret123!"}' \
+  headers_json[@] 400
 
-# 1.2. Дубликат => 409
-run_test "Register duplicate $USER" \
+# 1.2. Дубликат → 409
+run_test "Register duplicate Alice" \
   POST "$BASE_URL/register" \
-  "{\"login\":\"$USER\",\"password\":\"Secret123\"}" \
-  headers_json 409
+  "{\"login\":\"$USER_A\",\"password\":\"$PASS_A\"}" \
+  headers_json[@] 409
 
-# 2. Логин
-run_test "Login correct credentials" \
+# 2. Login Alice
+run_test "Login Alice" \
   POST "$BASE_URL/login" \
-  "{\"login\":\"$USER\",\"password\":\"Secret123\"}" \
-  headers_json 200
+  "{\"login\":\"$USER_A\",\"password\":\"$PASS_A\"}" \
+  headers_json[@] 200
 
-# Извлекаем токен
-TOKEN=$(sed -nE 's/.*"token"\s*:\s*"([^"]+)".*/\1/p' /tmp/response)
-if [[ -z "$TOKEN" ]]; then
-  echo "ERROR: failed to extract JWT token"
+TOKEN_A=$(grep -Po '"token"\s*:\s*"\K[^"]+' /tmp/response)
+if [[ -z $TOKEN_A ]]; then
+  echo "ERROR: no token"
   exit 1
 fi
-echo "Token: $TOKEN"
+headers_auth_a=("Content-Type: application/json" "Authorization: Bearer $TOKEN_A")
 
-# Заголовки с авторизацией
-headers_auth_json=("Content-Type: application/json" "Authorization: Bearer $TOKEN")
-
-# 2.1. Неверный пароль => 401
-run_test "Login wrong password" \
+# 2.1. Неверный пароль → 401
+run_test "Login wrong pass" \
   POST "$BASE_URL/login" \
-  "{\"login\":\"$USER\",\"password\":\"WrongPass\"}" \
-  headers_json 401
+  "{\"login\":\"$USER_A\",\"password\":\"WrongPass\"}" \
+  headers_json[@] 401
 
-# 3. Создание поста
-run_test "Create post with token" \
+# 3. Create post as Alice
+run_test "Create post as Alice" \
   POST "$BASE_URL/posts" \
-  '{"title":"Test Item","description":"Desc","price":123.45,"image_url":"https://example.com/img"}' \
-  headers_auth_json 201
+  '{"title":"Test Item","description":"Desc","price":123.45,"image_url":"https://example.com/img.png"}' \
+  headers_auth_a[@] 201
 
-# Извлекаем ID созданного поста
+# Извлекаем POST_ID
 POST_ID=$(sed -nEn 's/.*"[iI][dD]"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' /tmp/response)
 if [[ -z "$POST_ID" ]]; then
   echo "ERROR: failed to extract post ID"
@@ -104,117 +97,114 @@ if [[ -z "$POST_ID" ]]; then
 fi
 echo "Created post ID: $POST_ID"
 
-# 3.1. Без токена => 401
-run_test "Create post without token" \
+# 3.1. Create without token → 401
+run_test "Create post no token" \
   POST "$BASE_URL/posts" \
-  '{"title":"Test Item","description":"Desc","price":123.45,"image_url":"https://example.com/img"}' \
-  headers_json 401
+  '{"title":"Item","description":"Desc","price":1,"image_url":"https://example.com/x.png"}' \
+  headers_json[@] 401
 
-# 3.2. Отрицательная цена => 400
-run_test "Create post negative price" \
+# 3.2. Negative price → 400
+run_test "Create negative price" \
   POST "$BASE_URL/posts" \
-  '{"title":"Test Item","description":"Desc","price":-5,"image_url":"https://example.com/img"}' \
-  headers_auth_json 400
+  '{"title":"Item","description":"Desc","price":-5,"image_url":"https://example.com/x.png"}' \
+  headers_auth_a[@] 400
 
-# 4. Получение ленты (публичный эндпоинт)
-run_test "Get feed (unprotected)" \
+# 4. Get feed public → 200
+run_test "Get feed public" \
   GET "$BASE_URL/posts/feed" \
   "" \
-  headers_none 200
+  headers_none[@] 200
 
-# 5. Фильтр по owner (требует авторизации)
-run_test "Get posts filtered by owner" \
-  GET "$BASE_URL/posts/feed?owner=$USER" \
+# 5. Filter by owner (public works too) → 200
+run_test "Get feed filtered by owner" \
+  GET "$BASE_URL/posts/feed?owner=$USER_A" \
   "" \
-  headers_auth_json 200
+  headers_none[@] 200
 
-# 6. Получение одного поста по ID
-run_test "Get post without token" \
+# 6. Get post by ID
+run_test "Get post public" \
   GET "$BASE_URL/posts/$POST_ID" \
   "" \
-  headers_none 401
+  headers_none[@] 200
 
-run_test "Get post with token" \
+run_test "Get post as Alice" \
   GET "$BASE_URL/posts/$POST_ID" \
   "" \
-  headers_auth_json 200
+  headers_auth_a[@] 200
 
-# 7. Обновление поста
-run_test "Update post without token" \
+# 7. Update post
+run_test "Update post as Alice" \
   PUT "$BASE_URL/posts/$POST_ID" \
   '{"title":"NewTitle","description":"NewDesc","price":200,"image_url":"https://example.com/new.png"}' \
-  headers_json 401
+  headers_auth_a[@] 204
 
-run_test "Update post with token" \
-  PUT "$BASE_URL/posts/$POST_ID" \
-  '{"title":"NewTitle","description":"NewDesc","price":200,"image_url":"https://example.com/new.png"}' \
-  headers_auth_json 204
-
-# Проверим, что изменения сохранились
-run_test "Get updated post" \
+# 7.1 Verify update
+run_test "Verify updated post" \
   GET "$BASE_URL/posts/$POST_ID" \
   "" \
-  headers_auth_json 200
+  headers_auth_a[@] 200
 
-# 8. Удаление поста
-run_test "Delete post without token" \
+# 8. Delete post
+run_test "Delete post no token" \
   DELETE "$BASE_URL/posts/$POST_ID" \
   "" \
-  headers_json 401
+  headers_json[@] 401
 
-run_test "Delete post with token" \
+run_test "Delete post as Alice" \
   DELETE "$BASE_URL/posts/$POST_ID" \
   "" \
-  headers_auth_json 204
+  headers_auth_a[@] 204
 
-# После удаления — должен быть 404
 run_test "Get deleted post" \
   GET "$BASE_URL/posts/$POST_ID" \
   "" \
-  headers_auth_json 404
+  headers_auth_a[@] 404
 
-# 9. Негативные сценарии на регистр и логин
+# 9. Wrong method / invalid JSON
 run_test "Wrong method on register" \
   PUT "$BASE_URL/register" \
   "" \
-  headers_none 405
+  headers_none[@] 405
 
 run_test "Invalid JSON on register" \
   POST "$BASE_URL/register" \
   '{"login":"bob","password":}' \
-  headers_json 400
+  headers_json[@] 400
+
+# 10. Bob tries to delete Alice's post
+echo "== Part 10: Bob unauthorized delete =="
+USER_B="bob_$(date +%s)"
+PASS_B="Password1!"
+run_test "Register Bob" \
+  POST "$BASE_URL/register" \
+  "{\"login\":\"$USER_B\",\"password\":\"$PASS_B\"}" \
+  headers_json[@] 201
+
+run_test "Login Bob" \
+  POST "$BASE_URL/login" \
+  "{\"login\":\"$USER_B\",\"password\":\"$PASS_B\"}" \
+  headers_json[@] 200
+
+TOKEN_B=$(grep -Po '"token"\s*:\s*"\K[^"]+' /tmp/response)
+headers_auth_b=("Content-Type: application/json" "Authorization: Bearer $TOKEN_B")
+
+# Alice creates second post for Bob to try delete
+run_test "Alice creates second post" \
+  POST "$BASE_URL/posts" \
+  '{"title":"Second","description":"Desc2","price":50,"image_url":"https://example.com/2.png"}' \
+  headers_auth_a[@] 201
+
+id_line=$(grep -m1 '"id"' /tmp/response)
+NEW_ID="${id_line//[!0-9]/}"
+
+run_test "Bob deletes Alice’s second post" \
+  DELETE "$BASE_URL/posts/$NEW_ID" \
+  "" \
+  headers_auth_b[@] 401
+
+run_test "Alice deletes second post" \
+  DELETE "$BASE_URL/posts/$NEW_ID" \
+  "" \
+  headers_auth_a[@] 204
 
 echo "== All tests passed! =="
-
-# 10 fixes
-
-# ФИД без авторизации
-echo "Public feed:"
-curl -s "$BASE_URL/posts/feed" | jq .
-
-# ФИД с авторизацией
-echo "Alice's feed:"
-curl -s -H "Authorization: Bearer $TOKEN_ALICE" "$BASE_URL/posts/feed" | jq .
-
-# GET поста без токена
-echo "Get post #$ID1 public:"
-curl -s "$BASE_URL/posts/$ID1" | jq .
-
-# GET поста с токеном Alice
-echo "Get post #$ID1 as Alice:"
-curl -s -H "Authorization: Bearer $TOKEN_ALICE" "$BASE_URL/posts/$ID1" | jq .
-
-# Некорректный DELETE поста чужим пользователем (Bob)
-echo "Delete #$ID2 as Bob (should fail):"
-curl -s -X DELETE -H "Authorization: Bearer $TOKEN_BOB" \
-     "$BASE_URL/posts/$ID2" -w "\nStatus: %{http_code}\n"
-
-# Успешный DELETE поста Alice
-echo "Delete #$ID2 as Alice:"
-curl -s -X DELETE -H "Authorization: Bearer $TOKEN_ALICE" \
-     "$BASE_URL/posts/$ID2" -w "\nStatus: %{http_code}\n"
-
-# Проверка, что пост удалён
-echo "Get deleted #$ID2 (should 404):"
-curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/posts/$ID2"
-echo

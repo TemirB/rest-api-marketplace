@@ -54,37 +54,51 @@ func main() {
 	authService := auth.NewService(userDB, tokemManager, logger)
 	postService := post.NewService(postDB, logger)
 
-	// Initialize middleware
-	jwtMiddleware := middleware.JWTAuthMiddleware(authService)
-	optionalAuthMiddleware := middleware.OptionalAuthMiddleware(authService)
-
 	// Initialize handlers
 	authHandler := auth.NewHandler(authService, logger)
 	postHandler := post.NewHandler(postService, logger)
 
 	// Set up HTTP server and routes
-	http.HandleFunc("/register", authHandler.Register)
-	http.HandleFunc("/login", authHandler.Login)
+	mux := http.NewServeMux()
 
-	http.Handle("/posts", optionalAuthMiddleware(http.HandlerFunc(postHandler.CreatePost)))
-	http.Handle("/posts/", jwtMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			// GET /posts/{id}
-			postHandler.GetPostByID(w, r)
-		case http.MethodPut:
-			// PUT /posts/{id}
-			postHandler.UpdatePost(w, r)
-		case http.MethodDelete:
-			// DELETE /posts/{id}
-			postHandler.DeletePost(w, r)
-		default:
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-		}
-	})))
-	http.HandleFunc("/posts/feed", postHandler.GetPosts)
+	mux.HandleFunc("/register", authHandler.Register)
+	mux.HandleFunc("/login", authHandler.Login)
+
+	mux.Handle("/posts", middleware.JWTAuthMiddleware(authService)(
+		http.HandlerFunc(postHandler.CreatePost),
+	))
+	mux.Handle("/posts/feed", middleware.OptionalAuthMiddleware(authService)(
+		http.HandlerFunc(postHandler.GetPosts),
+	))
+
+	mux.Handle("/posts/", middleware.OptionalAuthMiddleware(authService)(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method {
+			case http.MethodGet:
+				postHandler.GetPostByID(w, r)
+
+			case http.MethodPut:
+				// проверяем, что JWT был валидным
+				if r.Context().Value(middleware.CtxUser) == nil {
+					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					return
+				}
+				postHandler.UpdatePost(w, r)
+
+			case http.MethodDelete:
+				if r.Context().Value(middleware.CtxUser) == nil {
+					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					return
+				}
+				postHandler.DeletePost(w, r)
+
+			default:
+				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			}
+		}),
+	))
 
 	ServerAddress := ":" + strconv.Itoa(cfg.AppPort)
 	log.Printf("Server started at %s\n", ServerAddress)
-	http.ListenAndServe(ServerAddress, nil)
+	http.ListenAndServe(ServerAddress, mux)
 }
