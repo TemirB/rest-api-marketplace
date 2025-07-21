@@ -50,7 +50,8 @@ func main() {
 	postDB := post.NewStorage(dbRepo, logger)
 
 	// Initialize services
-	tokemManager := jwt.New(cfg.JWT.Secret, time.Duration(cfg.JWT.Expiration)*time.Minute)
+	expiration := time.Now().Add(time.Duration(cfg.JWT.Expiration) * time.Minute)
+	tokemManager := jwt.New(cfg.JWT.Secret, expiration)
 	authService := auth.NewService(userDB, tokemManager, logger)
 	postService := post.NewService(postDB, logger)
 

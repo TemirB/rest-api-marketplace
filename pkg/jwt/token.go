@@ -15,10 +15,10 @@ var (
 
 type Manager struct {
 	secret     string
-	expiration time.Duration
+	expiration time.Time
 }
 
-func New(secret string, expiration time.Duration) *Manager {
+func New(secret string, expiration time.Time) *Manager {
 	return &Manager{
 		secret:     secret,
 		expiration: expiration,
@@ -47,6 +47,13 @@ func (m *Manager) ValidateToken(tokenStr string) (string, error) {
 	login, ok := claims["login"].(string)
 	if !ok {
 		return "", errors.New("login claim missing")
+	}
+	if floatExp, ok := claims["exp"].(float64); ok {
+		if time.Now().Unix() > int64(floatExp) {
+			return "", errors.New("token expired")
+		}
+	} else {
+		return "", errors.New("expiration claim missing or invalid")
 	}
 	return login, nil
 }
