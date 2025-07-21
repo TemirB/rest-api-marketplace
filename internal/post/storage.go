@@ -51,7 +51,7 @@ func (r *Storage) Create(post *Post) error {
 			"Failed to create post",
 			zap.Error(err),
 		)
-		return errors.Errorf("failed to create post: %d", err)
+		return errors.Errorf("failed to create post: %v", err)
 	}
 	return nil
 }
@@ -82,7 +82,7 @@ func (r *Storage) GetByID(id uint) (*Post, error) {
 		if err == sql.ErrNoRows {
 			return nil, ErrPostNotFound
 		}
-		return nil, errors.Errorf("failed to get post: %d", err)
+		return nil, errors.Errorf("failed to get post: %v", err)
 	}
 
 	return &post, nil
@@ -187,7 +187,7 @@ func (r *Storage) Update(post *Post) error {
 			zap.Uint("id", post.ID),
 			zap.Error(err),
 		)
-		return errors.Errorf("failed to update post: %d", err)
+		return errors.Errorf("failed to update post: %v", err)
 	}
 	return nil
 }
@@ -201,7 +201,7 @@ func (r *Storage) Delete(id uint64) error {
 			zap.Uint64("id", id),
 			zap.Error(err),
 		)
-		return errors.Errorf("failed to delete post: %d", err)
+		return errors.Errorf("failed to delete post: %v", err)
 	}
 	return nil
 }
