@@ -66,6 +66,21 @@ func main() {
 	http.HandleFunc("/login", authHandler.Login)
 
 	http.Handle("/posts", jwtMiddleware(http.HandlerFunc(postHandler.CreatePost)))
+	http.Handle("/posts/", jwtMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			// GET /posts/{id}
+			postHandler.GetPostByID(w, r)
+		case http.MethodPut:
+			// PUT /posts/{id}
+			postHandler.UpdatePost(w, r)
+		case http.MethodDelete:
+			// DELETE /posts/{id}
+			postHandler.DeletePost(w, r)
+		default:
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		}
+	})))
 	http.HandleFunc("/posts/feed", postHandler.GetPosts)
 
 	ServerAddress := ":" + strconv.Itoa(cfg.AppPort)

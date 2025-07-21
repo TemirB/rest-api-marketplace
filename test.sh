@@ -96,6 +96,14 @@ run_test "Create post with token" \
   '{"title":"Test Item","description":"Desc","price":123.45,"image_url":"https://example.com/img"}' \
   headers_auth_json 201
 
+# Извлекаем ID созданного поста
+POST_ID=$(sed -nEn 's/.*"[iI][dD]"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' /tmp/response)
+if [[ -z "$POST_ID" ]]; then
+  echo "ERROR: failed to extract post ID"
+  exit 1
+fi
+echo "Created post ID: $POST_ID"
+
 # 3.1. Без токена => 401
 run_test "Create post without token" \
   POST "$BASE_URL/posts" \
@@ -120,7 +128,52 @@ run_test "Get posts filtered by owner" \
   "" \
   headers_auth_json 200
 
-# 6. Негативные сценарии
+# 6. Получение одного поста по ID
+run_test "Get post without token" \
+  GET "$BASE_URL/posts/$POST_ID" \
+  "" \
+  headers_none 401
+
+run_test "Get post with token" \
+  GET "$BASE_URL/posts/$POST_ID" \
+  "" \
+  headers_auth_json 200
+
+# 7. Обновление поста
+run_test "Update post without token" \
+  PUT "$BASE_URL/posts/$POST_ID" \
+  '{"title":"NewTitle","description":"NewDesc","price":200,"image_url":"https://example.com/new.png"}' \
+  headers_json 401
+
+run_test "Update post with token" \
+  PUT "$BASE_URL/posts/$POST_ID" \
+  '{"title":"NewTitle","description":"NewDesc","price":200,"image_url":"https://example.com/new.png"}' \
+  headers_auth_json 204
+
+# Проверим, что изменения сохранились
+run_test "Get updated post" \
+  GET "$BASE_URL/posts/$POST_ID" \
+  "" \
+  headers_auth_json 200
+
+# 8. Удаление поста
+run_test "Delete post without token" \
+  DELETE "$BASE_URL/posts/$POST_ID" \
+  "" \
+  headers_json 401
+
+run_test "Delete post with token" \
+  DELETE "$BASE_URL/posts/$POST_ID" \
+  "" \
+  headers_auth_json 204
+
+# После удаления — должен быть 404
+run_test "Get deleted post" \
+  GET "$BASE_URL/posts/$POST_ID" \
+  "" \
+  headers_auth_json 404
+
+# 9. Негативные сценарии на регистр и логин
 run_test "Wrong method on register" \
   PUT "$BASE_URL/register" \
   "" \

@@ -4,6 +4,7 @@ package post
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -15,6 +16,10 @@ import (
 type service interface {
 	CreatePost(post *Post) (*Post, error)
 	GetPosts(sort *SortParams, filter *FilterParams) ([]*Post, error)
+	UpdatePost(post *Post) error
+	DeletePost(id uint64) error
+
+	GetPostByID(id uint) (*Post, error)
 }
 
 type Handler struct {
@@ -188,4 +193,146 @@ func (h *Handler) GetPosts(w http.ResponseWriter, r *http.Request) {
 	)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(posts)
+}
+
+func (h *Handler) UpdatePost(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) != 3 || parts[1] != "posts" {
+		http.Error(w, "Not Found", http.StatusNotFound)
+		return
+	}
+
+	id64, err := strconv.ParseUint(parts[2], 10, 64)
+	if err != nil {
+		http.Error(w, "Bad Request: invalid id", http.StatusBadRequest)
+		return
+	}
+	id := uint(id64)
+
+	var req struct {
+		Title       string  `json:"title"`
+		Description string  `json:"description"`
+		Price       float64 `json:"price"`
+		ImageURL    string  `json:"image_url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Bad Request: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	post, err := h.service.GetPostByID(id)
+	if err != nil {
+		h.logger.Error(
+			"Failed to get post",
+			zap.Uint("id", id),
+			zap.Error(err),
+		)
+		http.Error(w, "Internal Server Error", http.StatusBadRequest)
+		return
+	}
+	if post.Owner != r.Context().Value("userLogin") {
+		http.Error(w, "Unauthorized: not owner", http.StatusUnauthorized)
+		return
+	}
+
+	post = &Post{
+		ID:          id,
+		Title:       req.Title,
+		Description: req.Description,
+		Price:       req.Price,
+		ImageURL:    req.ImageURL,
+	}
+
+	if err := h.service.UpdatePost(post); err != nil {
+		h.logger.Error("Failed to update post", zap.Error(err))
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) DeletePost(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) != 3 || parts[1] != "posts" {
+		http.Error(w, "Not Found", http.StatusNotFound)
+		return
+	}
+
+	id64, err := strconv.ParseUint(parts[2], 10, 32)
+	if err != nil {
+		http.Error(w, "Bad Request: invalid id", http.StatusBadRequest)
+		return
+	}
+
+	post, err := h.service.GetPostByID(uint(id64))
+	if err != nil {
+		h.logger.Error(
+			"Failed to get post",
+			zap.Uint64("id", id64),
+			zap.Error(err),
+		)
+		http.Error(w, "Post doesnt exist", http.StatusBadRequest)
+		return
+	}
+	if post.Owner != r.Context().Value("userLogin") {
+		http.Error(w, "Unauthorized: not owner", http.StatusUnauthorized)
+		return
+	}
+
+	if err := h.service.DeletePost(id64); err != nil {
+		h.logger.Error("Failed to delete post", zap.Error(err))
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) GetPostByID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) != 3 || parts[1] != "posts" {
+		http.Error(w, "Not Found", http.StatusNotFound)
+		return
+	}
+
+	id64, err := strconv.ParseUint(parts[2], 10, 64)
+	if err != nil {
+		http.Error(w, "Bad Request: invalid id", http.StatusBadRequest)
+		return
+	}
+
+	id := uint(id64)
+	post, err := h.service.GetPostByID(id)
+	if err != nil {
+		if errors.Is(err, ErrPostNotFound) {
+			http.Error(w, "Not Found", http.StatusNotFound)
+			return
+		}
+		h.logger.Error(
+			"Failed to get post",
+			zap.Uint("id", id),
+			zap.Error(err),
+		)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(post)
 }

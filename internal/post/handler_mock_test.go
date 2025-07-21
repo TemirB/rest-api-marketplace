@@ -48,6 +48,35 @@ func (mr *MockserviceMockRecorder) CreatePost(post interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreatePost", reflect.TypeOf((*Mockservice)(nil).CreatePost), post)
 }
 
+// DeletePost mocks base method.
+func (m *Mockservice) DeletePost(id uint64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeletePost", id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeletePost indicates an expected call of DeletePost.
+func (mr *MockserviceMockRecorder) DeletePost(id interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePost", reflect.TypeOf((*Mockservice)(nil).DeletePost), id)
+}
+
+// GetPostByID mocks base method.
+func (m *Mockservice) GetPostByID(id uint) (*Post, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPostByID", id)
+	ret0, _ := ret[0].(*Post)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPostByID indicates an expected call of GetPostByID.
+func (mr *MockserviceMockRecorder) GetPostByID(id interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPostByID", reflect.TypeOf((*Mockservice)(nil).GetPostByID), id)
+}
+
 // GetPosts mocks base method.
 func (m *Mockservice) GetPosts(sort *SortParams, filter *FilterParams) ([]*Post, error) {
 	m.ctrl.T.Helper()
@@ -61,4 +90,18 @@ func (m *Mockservice) GetPosts(sort *SortParams, filter *FilterParams) ([]*Post,
 func (mr *MockserviceMockRecorder) GetPosts(sort, filter interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPosts", reflect.TypeOf((*Mockservice)(nil).GetPosts), sort, filter)
+}
+
+// UpdatePost mocks base method.
+func (m *Mockservice) UpdatePost(post *Post) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdatePost", post)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdatePost indicates an expected call of UpdatePost.
+func (mr *MockserviceMockRecorder) UpdatePost(post interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdatePost", reflect.TypeOf((*Mockservice)(nil).UpdatePost), post)
 }

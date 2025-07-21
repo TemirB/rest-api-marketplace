@@ -47,6 +47,20 @@ func (mr *MockstorageMockRecorder) Create(post interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*Mockstorage)(nil).Create), post)
 }
 
+// Delete mocks base method.
+func (m *Mockstorage) Delete(id uint64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Delete", id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Delete indicates an expected call of Delete.
+func (mr *MockstorageMockRecorder) Delete(id interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*Mockstorage)(nil).Delete), id)
+}
+
 // GetAll mocks base method.
 func (m *Mockstorage) GetAll(sort *SortParams, filter *FilterParams) ([]*Post, error) {
 	m.ctrl.T.Helper()
@@ -60,4 +74,33 @@ func (m *Mockstorage) GetAll(sort *SortParams, filter *FilterParams) ([]*Post, e
 func (mr *MockstorageMockRecorder) GetAll(sort, filter interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAll", reflect.TypeOf((*Mockstorage)(nil).GetAll), sort, filter)
+}
+
+// GetByID mocks base method.
+func (m *Mockstorage) GetByID(id uint) (*Post, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetByID", id)
+	ret0, _ := ret[0].(*Post)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetByID indicates an expected call of GetByID.
+func (mr *MockstorageMockRecorder) GetByID(id interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*Mockstorage)(nil).GetByID), id)
+}
+
+// Update mocks base method.
+func (m *Mockstorage) Update(post *Post) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Update", post)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Update indicates an expected call of Update.
+func (mr *MockstorageMockRecorder) Update(post interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*Mockstorage)(nil).Update), post)
 }

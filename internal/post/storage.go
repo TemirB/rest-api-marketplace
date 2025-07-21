@@ -11,6 +11,8 @@ import (
 	"go.uber.org/zap"
 )
 
+var ErrPostNotFound = errors.New("post not found")
+
 type Repository interface {
 	Exec(query string, args ...any) (sql.Result, error)
 	QueryRow(query string, args ...any) *sql.Row
@@ -55,10 +57,10 @@ func (r *Storage) Create(post *Post) error {
 }
 
 func (r *Storage) GetByID(id uint) (*Post, error) {
-	query := `
-		SELECT id, title, description, price, image_url, owner, created_at
-		FROM posts WHERE id = $1
-	`
+	const query = `
+        SELECT id, title, description, price, image_url, owner, created_at
+        FROM posts WHERE id = $1
+    `
 	row := r.repository.QueryRow(query, id)
 
 	var post Post
@@ -68,8 +70,8 @@ func (r *Storage) GetByID(id uint) (*Post, error) {
 		&post.Description,
 		&post.Price,
 		&post.ImageURL,
-		&post.CreatedAt,
 		&post.Owner,
+		&post.CreatedAt,
 	)
 	if err != nil {
 		r.logger.Error(
@@ -77,6 +79,9 @@ func (r *Storage) GetByID(id uint) (*Post, error) {
 			zap.Uint("id", id),
 			zap.Error(err),
 		)
+		if err == sql.ErrNoRows {
+			return nil, ErrPostNotFound
+		}
 		return nil, errors.Errorf("failed to get post: %d", err)
 	}
 
@@ -168,11 +173,33 @@ func (r *Storage) GetAll(sort *SortParams, filter *FilterParams) ([]*Post, error
 	return posts, nil
 }
 
-func (r *Storage) Delete(id uint) error {
+func (r *Storage) Update(post *Post) error {
+	query := `
+        UPDATE posts
+        SET title=$1, description=$2, price=$3, image_url=$4
+        WHERE id=$5
+    `
+	_, err := r.repository.Exec(query, post.Title, post.Description, post.Price, post.ImageURL, post.ID)
+	if err != nil {
+		r.logger.Error(
+			"Failed to update post",
+			zap.Uint("id", post.ID),
+			zap.Error(err),
+		)
+		return errors.Errorf("failed to update post: %d", err)
+	}
+	return nil
+}
+
+func (r *Storage) Delete(id uint64) error {
 	query := `DELETE FROM posts WHERE id = $1`
 	_, err := r.repository.Exec(query, id)
 	if err != nil {
-		r.logger.Error("Failed to delete post", zap.Uint("id", id), zap.Error(err))
+		r.logger.Error(
+			"Failed to delete post",
+			zap.Uint64("id", id),
+			zap.Error(err),
+		)
 		return errors.Errorf("failed to delete post: %d", err)
 	}
 	return nil
