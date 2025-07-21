@@ -7,7 +7,7 @@ services:
       - POSTGRES_DB=marketplace
     volumes:
       - db_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./init.sql:/docker-entrypoint-initdb.d/migrations/init.sql:ro
 
   app:
     build: .

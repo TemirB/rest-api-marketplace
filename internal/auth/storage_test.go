@@ -72,5 +72,3 @@ func TestStorage_Create(t *testing.T) {
 		})
 	}
 }
-
-// Подобное тестирование для Exists, GetByLogin, DeleteUser

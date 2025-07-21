@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"database/sql"
 	"fmt"
 )
 
@@ -28,8 +29,9 @@ func validLogin(login string) bool {
 // (false, err) — при ошибке работы с БД.
 func (s *Service) userExists(login string) (bool, error) {
 	exists, err := s.storage.Exists(login)
-	if err != nil {
-		return false, fmt.Errorf("checking user existence: %w", err)
+
+	if err == nil || err == sql.ErrNoRows {
+		return exists, nil
 	}
-	return exists, nil
+	return false, fmt.Errorf("checking user existence: %w", err)
 }

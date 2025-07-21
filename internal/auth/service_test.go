@@ -82,9 +82,26 @@ func TestService_Register(t *testing.T) {
 
 				service := NewService(storage, manager, zap.NewNop())
 
-				storage.EXPECT().Exists("testuser").Return(true, sql.ErrConnDone)
+				storage.EXPECT().Exists("testuser").Return(true, nil)
 
 				return service
+			},
+
+			expectedError: ErrUserExists,
+		},
+		{
+			name: "Registration_failed_storage",
+
+			login:    "testuser",
+			password: "securepassword",
+
+			setupMocks: func(ctrl *gomock.Controller) *Service {
+				storage := NewMockstorage(ctrl)
+				manager := NewMockmanager(ctrl)
+
+				storage.EXPECT().Exists("testuser").Return(false, sql.ErrConnDone)
+
+				return NewService(storage, manager, zap.NewNop())
 			},
 
 			expectedError: sql.ErrConnDone,

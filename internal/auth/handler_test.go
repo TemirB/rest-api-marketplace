@@ -90,6 +90,39 @@ func TestHandler_Register(t *testing.T) {
 
 			expectedStatus: http.StatusInternalServerError,
 		},
+		{
+			testID: "5",
+			name:   "Register_Error_User_Allready_Exists",
+
+			method:  http.MethodPost,
+			url:     "/register",
+			reqBody: []byte(`{"login": "testUser", "password": "testPassword"}`),
+
+			setupMocks: func(ctrl *gomock.Controller) *Handler {
+				mockService := NewMockservice(ctrl)
+				mockService.EXPECT().Register("testUser", "testPassword").Return(ErrUserExists)
+
+				return NewHandler(mockService, zap.NewNop())
+			},
+
+			expectedStatus: http.StatusConflict,
+		},
+		{
+			testID: "6",
+			name:   "Register_Error_Invalid_Login",
+
+			method:  http.MethodPost,
+			url:     "/register",
+			reqBody: []byte(`{"login": "testUser", "password": "testPassword"}`),
+
+			setupMocks: func(ctrl *gomock.Controller) *Handler {
+				mockService := NewMockservice(ctrl)
+				mockService.EXPECT().Register("testUser", "testPassword").Return(ErrInvalidLogin)
+				return NewHandler(mockService, zap.NewNop())
+			},
+
+			expectedStatus: http.StatusBadRequest,
+		},
 	}
 
 	for _, tc := range testCases {
