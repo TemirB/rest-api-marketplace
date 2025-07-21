@@ -1,32 +1,40 @@
 package post
 
+// mockgen  -source=storage.go -destination=storage_mock_test.go -package=post
+
 import (
 	"database/sql"
 	"fmt"
 
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
-
-	"github.com/TemirB/rest-api-marketplace/internal/database"
 )
 
-type storage struct {
-	repository *database.Repository
+type Repository interface {
+	Exec(query string, args ...any) (sql.Result, error)
+	QueryRow(query string, args ...any) *sql.Row
+	Query(query string, args ...any) (*sql.Rows, error)
 }
 
-func NewStorage(repository *database.Repository) *storage {
-	return &storage{
+type Storage struct {
+	repository Repository
+	logger     *zap.Logger
+}
+
+func NewStorage(repository Repository, logger *zap.Logger) *Storage {
+	return &Storage{
 		repository: repository,
+		logger:     logger,
 	}
 }
 
-func (r *storage) Create(post *Post) error {
+func (r *Storage) Create(post *Post) error {
 	query := `
 		INSERT INTO posts (title, description, price, image_url, owner)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id, created_at
 	`
-	err := r.repository.DB.QueryRow(
+	err := r.repository.QueryRow(
 		query,
 		post.Title,
 		post.Description,
@@ -36,18 +44,21 @@ func (r *storage) Create(post *Post) error {
 	).Scan(&post.ID, &post.CreatedAt)
 
 	if err != nil {
-		r.repository.Logger.Error("Failed to create post", zap.Error(err))
+		r.logger.Error(
+			"Failed to create post",
+			zap.Error(err),
+		)
 		return errors.Errorf("failed to create post: %d", err)
 	}
 	return nil
 }
 
-func (r *storage) GetByID(id uint) (*Post, error) {
+func (r *Storage) GetByID(id uint) (*Post, error) {
 	query := `
 		SELECT id, title, description, price, image_url, owner, created_at
 		FROM posts WHERE id = $1
 	`
-	row := r.repository.DB.QueryRow(query, id)
+	row := r.repository.QueryRow(query, id)
 
 	var post Post
 	err := row.Scan(
@@ -60,7 +71,7 @@ func (r *storage) GetByID(id uint) (*Post, error) {
 		&post.Owner,
 	)
 	if err != nil {
-		r.repository.Logger.Error(
+		r.logger.Error(
 			"Failed to get post by ID",
 			zap.Uint("id", id),
 			zap.Error(err),
@@ -83,21 +94,21 @@ func setField(query string, sort *SortParams) string {
 	return query
 }
 
-func (r *storage) GetAll(sort *SortParams, filter *FilterParams) ([]*Post, error) {
+func (r *Storage) GetAll(sort *SortParams, filter *FilterParams) ([]*Post, error) {
 	var query string
 	var rows *sql.Rows
 	var err error
 	if filter.MaxPrice < 0 {
 		query = fmt.Sprintf("SELECT ... FROM posts WHERE price >= $1 ORDER BY %s %s", sort.Field, sort.Direction)
 		query += setField(query, sort)
-		rows, err = r.repository.DB.Query(query, filter.MinPrice)
+		rows, err = r.repository.Query(query, filter.MinPrice)
 	} else {
 		query = fmt.Sprintf("SELECT ... FROM posts WHERE price BETWEEN $1 AND $2 ORDER BY %s %s", sort.Field, sort.Direction)
 		query += setField(query, sort)
-		rows, err = r.repository.DB.Query(query, filter.MinPrice, filter.MaxPrice)
+		rows, err = r.repository.Query(query, filter.MinPrice, filter.MaxPrice)
 	}
 	if err != nil {
-		r.repository.Logger.Error(
+		r.logger.Error(
 			"Failed to get posts",
 			zap.Error(err),
 			zap.Any("sort", sort),
@@ -119,7 +130,7 @@ func (r *storage) GetAll(sort *SortParams, filter *FilterParams) ([]*Post, error
 			&p.CreatedAt,
 		)
 		if err != nil {
-			r.repository.Logger.Error("Failed to scan post row", zap.Error(err))
+			r.logger.Error("Failed to scan post row", zap.Error(err))
 			continue // Пропускаем проблемные строки или return nil, errors.Wrap(...)
 		}
 		if filter.Owner != "" && p.Owner == filter.Owner {
@@ -129,18 +140,18 @@ func (r *storage) GetAll(sort *SortParams, filter *FilterParams) ([]*Post, error
 	}
 
 	if err := rows.Err(); err != nil {
-		r.repository.Logger.Error("Error iterating over posts", zap.Error(err))
+		r.logger.Error("Error iterating over posts", zap.Error(err))
 		return nil, errors.Wrap(err, "error iterating over posts")
 	}
 
 	return posts, nil
 }
 
-func (r *storage) Delete(id uint) error {
+func (r *Storage) Delete(id uint) error {
 	query := `DELETE FROM posts WHERE id = $1`
-	_, err := r.repository.DB.Exec(query, id)
+	_, err := r.repository.Exec(query, id)
 	if err != nil {
-		r.repository.Logger.Error("Failed to delete post", zap.Uint("id", id), zap.Error(err))
+		r.logger.Error("Failed to delete post", zap.Uint("id", id), zap.Error(err))
 		return errors.Errorf("failed to delete post: %d", err)
 	}
 	return nil

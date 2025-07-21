@@ -3,8 +3,6 @@ package post
 import (
 	"testing"
 
-	"github.com/ozontech/allure-go/pkg/framework/provider"
-	"github.com/ozontech/allure-go/pkg/framework/runner"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -17,13 +15,13 @@ func TestNewPost(t *testing.T) {
 		ownerLogin  string
 	}
 	testCases := []struct {
-		id          string
+		name        string
 		description string
 
 		postOpts opts
 	}{
 		{
-			id:          "1.Valid_Post",
+			name:        "1.Valid_Post",
 			description: "Create a new post with valid parameters",
 
 			postOpts: opts{
@@ -37,12 +35,7 @@ func TestNewPost(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		runner.Run(t, tc.id, func(tp provider.T) {
-			tp.Story("NewPost")
-
-			tp.ID(tc.id)
-			tp.Description(tc.description)
-
+		t.Run(tc.name, func(t *testing.T) {
 			post := NewPost(
 				tc.postOpts.title,
 				tc.postOpts.description,

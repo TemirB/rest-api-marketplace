@@ -1,5 +1,7 @@
 package post
 
+// mockgen  -source=handler.go -destination=handler_mock_test.go -package=post
+
 import (
 	"encoding/json"
 	"net/http"
@@ -10,31 +12,48 @@ import (
 	"go.uber.org/zap"
 )
 
-type Handler struct {
-	Service *Service
-	Logger  *zap.Logger
+type service interface {
+	CreatePost(post *Post) (*Post, error)
+	GetPosts(sort *SortParams, filter *FilterParams) ([]*Post, error)
 }
 
-func NewHandler(service *Service, logger *zap.Logger) *Handler {
+type Handler struct {
+	service service
+	logger  *zap.Logger
+}
+
+func NewHandler(service service, logger *zap.Logger) *Handler {
 	return &Handler{
-		Service: service,
-		Logger:  logger,
+		service: service,
+		logger:  logger,
 	}
 }
 
 func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
+		h.logger.Info(
+			"Method not allowed",
+			zap.String("method", r.Method),
+		)
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
 	loginVal := r.Context().Value("userLogin")
 	if loginVal == nil {
+		h.logger.Info(
+			"Unauthorized: no author",
+			zap.String("author", "loginVal==nil"),
+		)
 		http.Error(w, "Unauthorized: no user", http.StatusUnauthorized)
 		return
 	}
 	ownerLogin, ok := loginVal.(string)
 	if !ok {
+		h.logger.Info(
+			"Internal Server Error: invalid user context",
+			zap.String("author", "loginVal.(string) == false"),
+		)
 		http.Error(w, "Internal Server Error: invalid user context", http.StatusInternalServerError)
 		return
 	}
@@ -47,11 +66,17 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Error(
+			"Error while decoding request body",
+			zap.String("author", ownerLogin),
+			zap.Any("body", r.Body),
+			zap.Error(err),
+		)
 		http.Error(w, "Bad Request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	newPost, err := h.Service.CreatePost(&Post{
+	newPost, err := h.service.CreatePost(&Post{
 		Title:       req.Title,
 		Description: req.Description,
 		Price:       req.Price,
@@ -59,10 +84,20 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 		Owner:       ownerLogin,
 	})
 	if err != nil {
+		h.logger.Error(
+			"Failed to create post",
+			zap.String("author", ownerLogin),
+			zap.Any("post", newPost),
+			zap.Error(err),
+		)
 		http.Error(w, "Bad Request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
+	h.logger.Info(
+		"Post created successfully",
+		zap.Any("post", newPost),
+	)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(newPost)
@@ -71,19 +106,31 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 func setFilter(q url.Values, owner string) *FilterParams {
 	minPrice, errMinPrice := strconv.ParseFloat(q.Get("min_price"), 64)
 	maxPrice, errMaxPrice := strconv.ParseFloat(q.Get("max_price"), 64)
+
 	switch {
-	case minPrice > maxPrice || maxPrice < 0 || minPrice < 0:
+	case (errMinPrice != nil || minPrice < 0) && (errMaxPrice != nil || maxPrice < 0):
+		// оба некорректны
 		minPrice = 0
 		maxPrice = -1
-	case errMinPrice == nil && errMaxPrice == nil:
-	case errMinPrice != nil:
-		minPrice = 0
-	case errMaxPrice != nil:
+
+	case errMaxPrice != nil || maxPrice < 0:
+		// только max неверен
 		maxPrice = -1
+
+	case errMinPrice != nil || minPrice < 0:
+		// только min неверен
+		minPrice = 0
+
+	case minPrice > maxPrice:
+		// обе цены валидны, но нижняя > верхней
+		minPrice += maxPrice
+		maxPrice = minPrice - maxPrice
+		minPrice = minPrice - maxPrice
+
 	default:
-		minPrice = 0
-		maxPrice = -1
+		// всё корректно — ничего не меняем
 	}
+
 	return &FilterParams{
 		MinPrice: minPrice,
 		MaxPrice: maxPrice,
@@ -93,13 +140,13 @@ func setFilter(q url.Values, owner string) *FilterParams {
 
 func setSort(q url.Values) *SortParams {
 	sortBy := q.Get("sort_by")
-	if strings.ToLower(sortBy) != "created_at" {
+	if strings.ToLower(sortBy) == "price" {
 		sortBy = "price"
 	} else {
 		sortBy = "created_at"
 	}
 	order := q.Get("order")
-	if strings.ToLower(order) != "desc" {
+	if strings.ToLower(order) == "asc" {
 		order = "ASC"
 	} else {
 		order = "DESC"
@@ -112,6 +159,10 @@ func setSort(q url.Values) *SortParams {
 
 func (h *Handler) GetPosts(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
+		h.logger.Info(
+			"Method not allowed",
+			zap.String("method", r.Method),
+		)
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -124,17 +175,27 @@ func (h *Handler) GetPosts(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	filter := setFilter(q, currentUser)
-	if filter == nil {
-		return
-	}
 	sort := setSort(q)
 
-	posts, err := h.Service.GetPosts(sort, filter)
+	posts, err := h.service.GetPosts(sort, filter)
 	if err != nil {
+		h.logger.Error(
+			"Failed to get posts",
+			zap.String("author", currentUser),
+			zap.Any("sort", sort),
+			zap.Any("filter", filter),
+			zap.Error(err),
+		)
 		http.Error(w, "Internal Server Error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	h.logger.Info(
+		"Posts fetched successfully",
+		zap.String("author", currentUser),
+		zap.Any("sort", sort),
+		zap.Any("filter", filter),
+	)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(posts)
 }

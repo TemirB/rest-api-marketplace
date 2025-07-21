@@ -47,12 +47,12 @@ func main() {
 
 	// Initialize storages
 	userDB := auth.NewStorage(dbRepo, logger)
-	postDB := post.NewStorage(dbRepo)
+	postDB := post.NewStorage(dbRepo, logger)
 
 	// Initialize services
 	tokemManager := jwt.New(cfg.JWT.Secret, time.Duration(cfg.JWT.Expiration)*time.Minute)
 	authService := auth.NewService(userDB, tokemManager, logger)
-	postService := post.NewService(postDB)
+	postService := post.NewService(postDB, logger)
 
 	// Initialize middleware
 	jwtMiddleware := middleware.JWTAuthMiddleware(authService)
