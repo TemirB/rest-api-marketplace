@@ -32,7 +32,7 @@ func TestService_Register(t *testing.T) {
 			name: "Valid_Registration",
 
 			login:    "testuser",
-			password: "securepassword",
+			password: securePWD,
 
 			setupMocks: func(ctrl *gomock.Controller) *Service {
 				storage := NewMockstorage(ctrl)

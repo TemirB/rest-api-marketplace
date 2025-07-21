@@ -13,6 +13,8 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
+
+	"github.com/TemirB/rest-api-marketplace/internal/middleware"
 )
 
 func Test_setFilter(t *testing.T) {
@@ -103,6 +105,17 @@ func Test_setFilter(t *testing.T) {
 				MinPrice: 10,
 				MaxPrice: 20,
 				Owner:    "testuser",
+			},
+		},
+		{
+			name:  "7. Owner_Filter_Param",
+			q:     url.Values{"owner": []string{"bob"}},
+			owner: "alice",
+
+			expected: FilterParams{
+				MinPrice: 0,
+				MaxPrice: -1,
+				Owner:    "alice",
 			},
 		},
 	}
@@ -229,7 +242,7 @@ func TestHandler_GetPosts_Success(t *testing.T) {
 	mockService.EXPECT().GetPosts(gomock.Any(), gomock.Any()).Return(posts, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/posts/feed", nil)
-	ctx := context.WithValue(req.Context(), "userLogin", "alice")
+	ctx := context.WithValue(req.Context(), middleware.CtxUser, "alice")
 	req = req.WithContext(ctx)
 	rr := httptest.NewRecorder()
 
@@ -271,13 +284,61 @@ func TestHandler_GetPosts_ServiceErr(t *testing.T) {
 	mockService.EXPECT().GetPosts(gomock.Any(), gomock.Any()).Return(nil, errors.New("service error"))
 
 	req := httptest.NewRequest(http.MethodGet, "/posts/feed", nil)
-	ctx := context.WithValue(req.Context(), "userLogin", "alice")
+	ctx := context.WithValue(req.Context(), middleware.CtxUser, "alice")
 	req = req.WithContext(ctx)
 	rr := httptest.NewRecorder()
 
 	handler.GetPosts(rr, req)
 
 	assert.Equal(t, http.StatusInternalServerError, rr.Code)
+}
+
+func TestHandler_GetPosts_NoAuth(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockService := NewMockservice(ctrl)
+	handler := NewHandler(mockService, zap.NewNop())
+	posts := []*Post{
+		{ID: 1, Title: "First", Owner: "alice", Price: 50, IsOwner: false},
+		{ID: 2, Title: "Second", Owner: "bob", Price: 150, IsOwner: false},
+	}
+	mockService.EXPECT().GetPosts(gomock.Any(), gomock.Any()).Return(posts, nil)
+	req := httptest.NewRequest(http.MethodGet, "/posts/feed", nil)
+	rr := httptest.NewRecorder()
+	handler.GetPosts(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
+	var respPosts []Post
+	_ = json.Unmarshal(rr.Body.Bytes(), &respPosts)
+	assert.Len(t, respPosts, 2)
+	for _, p := range respPosts {
+		assert.False(t, p.IsOwner)
+	}
+}
+
+func TestHandler_GetPosts_FilterByOtherOwner(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockService := NewMockservice(ctrl)
+	handler := NewHandler(mockService, zap.NewNop())
+	posts := []*Post{
+		{ID: 1, Title: "Bob1", Owner: "bob", Price: 10, IsOwner: false},
+		{ID: 2, Title: "Bob2", Owner: "bob", Price: 20, IsOwner: false},
+	}
+	mockService.EXPECT().
+		GetPosts(gomock.Any(), gomock.Any()).
+		Return(posts, nil)
+	req := httptest.NewRequest(http.MethodGet, "/posts/feed?owner=bob", nil)
+	ctx := context.WithValue(req.Context(), middleware.CtxUser, "alice")
+	req = req.WithContext(ctx)
+	rr := httptest.NewRecorder()
+	handler.GetPosts(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
+	var respPosts []Post
+	_ = json.Unmarshal(rr.Body.Bytes(), &respPosts)
+	assert.Len(t, respPosts, 2)
+	for _, p := range respPosts {
+		assert.False(t, p.IsOwner)
+	}
 }
 
 func TestHandler_CreatePost(t *testing.T) {
@@ -361,7 +422,7 @@ func TestHandler_CreatePost(t *testing.T) {
 			handler := NewHandler(service, zap.NewNop())
 			req, _ := http.NewRequest(tc.method, tc.url, bytes.NewBuffer(tc.body))
 			if !tc.unauthorized {
-				ctx := context.WithValue(req.Context(), "userLogin", "alice")
+				ctx := context.WithValue(req.Context(), middleware.CtxUser, "alice")
 				req = req.WithContext(ctx)
 			}
 

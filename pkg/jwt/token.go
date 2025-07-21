@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/TemirB/rest-api-marketplace/internal/middleware"
 	jwt "github.com/golang-jwt/jwt/v5"
 )
 
@@ -51,7 +52,7 @@ func (m *Manager) ValidateToken(tokenStr string) (string, error) {
 }
 
 func GetLogin(r *http.Request) (string, error) {
-	if v := r.Context().Value("userLogin"); v != nil {
+	if v := r.Context().Value(middleware.CtxUser); v != nil {
 		if login, ok := v.(string); ok {
 			return login, nil
 		}

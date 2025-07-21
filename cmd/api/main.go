@@ -56,6 +56,7 @@ func main() {
 
 	// Initialize middleware
 	jwtMiddleware := middleware.JWTAuthMiddleware(authService)
+	optionalAuthMiddleware := middleware.OptionalAuthMiddleware(authService)
 
 	// Initialize handlers
 	authHandler := auth.NewHandler(authService, logger)
@@ -65,7 +66,7 @@ func main() {
 	http.HandleFunc("/register", authHandler.Register)
 	http.HandleFunc("/login", authHandler.Login)
 
-	http.Handle("/posts", jwtMiddleware(http.HandlerFunc(postHandler.CreatePost)))
+	http.Handle("/posts", optionalAuthMiddleware(http.HandlerFunc(postHandler.CreatePost)))
 	http.Handle("/posts/", jwtMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:

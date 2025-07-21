@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/TemirB/rest-api-marketplace/internal/middleware"
 	"github.com/TemirB/rest-api-marketplace/pkg/jwt"
 	"go.uber.org/zap"
 )
@@ -226,9 +227,9 @@ func (h *Handler) UpdatePost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error: invalid user context", http.StatusUnauthorized)
 		return
 	}
-	if post.Owner != login {
-		http.Error(w, "Unauthorized: not owner", http.StatusForbidden)
-		return
+	post.IsOwner = false
+	if post.Owner == login {
+		post.IsOwner = true
 	}
 
 	mergePostUpdates(post, updatePostRequest)
@@ -291,7 +292,7 @@ func (h *Handler) DeletePost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Post doesnt exist", http.StatusBadRequest)
 		return
 	}
-	if post.Owner != r.Context().Value("userLogin") {
+	if post.Owner != r.Context().Value(middleware.CtxUser) {
 		http.Error(w, "Unauthorized: not owner", http.StatusUnauthorized)
 		return
 	}

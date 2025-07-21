@@ -126,11 +126,12 @@ func (r *Storage) GetAll(sort *SortParams, filter *FilterParams) ([]*Post, error
 	}
 
 	/*
-	   if filter.Owner != "" {
-	       sb.WriteString(fmt.Sprintf(" AND owner = $%d", idx))
-	       args = append(args, filter.Owner)
-	       idx++
-	   }
+		// По условию нужно помечать посты, которые принадлежат определенному владельцу, но можно и возвращать только свои посты
+		   if filter.Owner != "" {
+		       sb.WriteString(fmt.Sprintf(" AND owner = $%d", idx))
+		       args = append(args, filter.Owner)
+		       idx++
+		   }
 	*/
 
 	sb.WriteString(fmt.Sprintf(" ORDER BY %s %s", sort.Field, sort.Direction))
